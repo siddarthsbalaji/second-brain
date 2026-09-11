@@ -1,6 +1,7 @@
 import'dotenv/config'
 import express from'express'
 import cors from'cors'
+import rateLimit from'express-rate-limit'
 import authRoutes from'./routes/auth'
 import calendarRoutes from'./routes/calendar'
 import eventRoutes from'./routes/events'
@@ -20,8 +21,8 @@ if (!process.env.JWT_SECRET||process.env.JWT_SECRET.length<32) {
 const app=express()
 const PORT=process.env.PORT||5000
 const frontendOrigins =
-  process.env.FRONTEND_ORIGINS?.split(', ')
-    .map((s)=>s.trim())
+  process.env.FRONTEND_ORIGINS?.split(',')
+    .map((s) => s.trim())
     .filter(Boolean) ?? ['http://localhost:5173']
 app.use(
   cors({
@@ -31,6 +32,14 @@ app.use(
   })
 )
 app.use('/uploads', express.static(path.join(process.cwd(),'uploads')))
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+app.use('/api', apiLimiter)
 app.use(express.json())
 app.get('/health', (_req, res)=>{
   res.json({ status:'ok' })
@@ -56,4 +65,14 @@ server.on('error', (err: any)=>{
  console.error('Server failed to start:', err)
  }
  process.exit(1)
+})
+// Graceful shutdown for nodemon restarts and termination signals
+process.once('SIGUSR2', () => {
+  process.exit(0)
+})
+process.on('SIGINT', () => {
+  process.exit(0)
+})
+process.on('SIGTERM', () => {
+  process.exit(0)
 })

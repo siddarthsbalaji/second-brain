@@ -1,7 +1,8 @@
-import { useState } from'react'
-import type { CalendarEvent } from'../../types/calendar'
-import type { TaskPriority } from'../../types/task'
-import { endOfDay, startOfDay } from'../../lib/calendarTime'
+import { useState } from 'react'
+import { Repeat } from 'lucide-react'
+import type { CalendarEvent, RecurrenceRule } from '../../types/calendar'
+import type { TaskPriority } from '../../types/task'
+import { endOfDay, startOfDay } from '../../lib/calendarTime'
 function toDatetimeLocalValue(d: Date):string {
   const pad=(n: number)=>String(n).padStart(2,'0')
   return`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
@@ -24,6 +25,7 @@ type Props={
     startsAt:string
     endsAt:string
     allDay: boolean
+    recurrenceRule?: RecurrenceRule | null
   })=>Promise<void>
   onCreateTask: (body: {
     title:string
@@ -39,6 +41,7 @@ type Props={
       startsAt:string
       endsAt:string
       allDay: boolean
+      recurrenceRule: RecurrenceRule | null
     }>
   )=>Promise<void>
   onDeleteEvent: (id:string)=>Promise<void>
@@ -55,7 +58,7 @@ export function CalendarEventModal({
   onDeleteEvent,
   busy,
 }: Props) {
-  const [type, setType]=useState<'event' |'task'>('event')
+  const type = 'event'
   const [title, setTitle]=useState(()=>(mode==='edit' && event ? event.title :''))
   const [description, setDescription]=useState(()=>
     mode==='edit' && event ? (event.description ??'') :''
@@ -76,53 +79,103 @@ export function CalendarEventModal({
     const { start }=defaultSlot(startOfDay(anchorDay))
     return toDatetimeLocalValue(start)
   })
+
+  // Recurring event state
+  const [recurrenceFreq, setRecurrenceFreq] = useState<'none' | 'daily' | 'interval' | 'weekly' | 'monthly' | 'custom'>(() => {
+    return (mode === 'edit' && event?.recurrenceRule?.frequency) || 'none'
+  })
+  const [recurrenceInterval, setRecurrenceInterval] = useState<number>(() => {
+    return (mode === 'edit' && event?.recurrenceRule?.interval) || 2
+  })
+  const [recurrenceDays, setRecurrenceDays] = useState<number[]>(() => {
+    if (mode === 'edit' && event?.recurrenceRule?.daysOfWeek) {
+      return event.recurrenceRule.daysOfWeek
+    }
+    return [anchorDay.getDay()]
+  })
+  const [hasEndDate, setHasEndDate] = useState<boolean>(() => {
+    return Boolean(mode === 'edit' && event?.recurrenceRule?.endDate)
+  })
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>(() => {
+    if (mode === 'edit' && event?.recurrenceRule?.endDate) {
+      return event.recurrenceRule.endDate.slice(0, 10)
+    }
+    const d = new Date(anchorDay)
+    d.setMonth(d.getMonth() + 1)
+    return d.toISOString().slice(0, 10)
+  })
+
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
-    if (type==='task' && mode==='create') {
-      await onCreateTask({
-        title: title.trim(),
-        description: description.trim()||null,
-        dueAt: taskDue ? new Date(taskDue).toISOString() : null,
-        priority: taskPriority
-      })
-      return
-    }
-    let startsAt:string
-    let endsAt:string
-    if (allDay) {
-      const day =
-        startLocal.length>=10
-          ? startOfDay(new Date(`${startLocal.slice(0, 10)}T12:00:00`))
-          : startOfDay(anchorDay)
-      startsAt=day.toISOString()
-      endsAt=endOfDay(day).toISOString()
-    } else {
-      const s=new Date(startLocal)
-      const en=new Date(endLocal)
-      if (Number.isNaN(s.getTime())||Number.isNaN(en.getTime())||en<s) return
-      startsAt=s.toISOString()
-      endsAt=en.toISOString()
-    }
-    if (mode==='create') {
-      await onCreateEvent({
-        title: title.trim(),
-        description: description.trim()||null,
-        startsAt,
-        endsAt,
-        allDay,
-      })
-    } else if (event) {
-      await onUpdateEvent(event.id, {
-        title: title.trim(),
-        description: description.trim()||null,
-        startsAt,
-        endsAt,
-        allDay,
-      })
+    setErrorMsg(null)
+    
+    try {
+      if (type==='task' && mode==='create') {
+        await onCreateTask({
+          title: title.trim(),
+          description: description.trim()||null,
+          dueAt: taskDue ? new Date(taskDue).toISOString() : null,
+          priority: taskPriority
+        })
+        return
+      }
+      let startsAt:string
+      let endsAt:string
+      if (allDay) {
+        const day =
+          startLocal.length>=10
+            ? startOfDay(new Date(`${startLocal.slice(0, 10)}T12:00:00`))
+            : startOfDay(anchorDay)
+        startsAt=day.toISOString()
+        endsAt=endOfDay(day).toISOString()
+      } else {
+        const s=new Date(startLocal)
+        const en=new Date(endLocal)
+        if (Number.isNaN(s.getTime())||Number.isNaN(en.getTime())||en<s) {
+          setErrorMsg('Invalid start or end time')
+          return
+        }
+        startsAt=s.toISOString()
+        endsAt=en.toISOString()
+      }
+
+      const recurrenceRule: RecurrenceRule | null = recurrenceFreq === 'none' ? null : {
+        frequency: recurrenceFreq,
+        interval: recurrenceFreq === 'interval' || recurrenceFreq === 'custom' ? recurrenceInterval : 1,
+        daysOfWeek: recurrenceFreq === 'weekly' || recurrenceFreq === 'custom' ? recurrenceDays : undefined,
+        endDate: hasEndDate && recurrenceEndDate ? new Date(recurrenceEndDate + 'T23:59:59Z').toISOString() : null,
+      }
+
+      if (mode==='create') {
+        await onCreateEvent({
+          title: title.trim(),
+          description: description.trim()||null,
+          startsAt,
+          endsAt,
+          allDay,
+          recurrenceRule,
+        })
+      } else if (event) {
+        const targetId = event.originalEventId || event.id
+        await onUpdateEvent(targetId, {
+          title: title.trim(),
+          description: description.trim()||null,
+          startsAt,
+          endsAt,
+          allDay,
+          recurrenceRule,
+        })
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.error || err.message || 'An error occurred'
+      setErrorMsg(msg)
     }
   }
-  const inputCls ="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+  const inputCls =
+    'mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 transition-all dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-violet-400 [color-scheme:light] dark:[color-scheme:dark]'
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/35 p-4 sm:items-center backdrop-blur-sm"
@@ -139,25 +192,15 @@ export function CalendarEventModal({
           <h2 id="cal-event-title" className="text-lg font-bold text-slate-900 dark:text-slate-100">
             {mode==='create' ?'Create new...' :'Edit event'}
           </h2>
-          {mode==='create' && (
-            <div className="flex bg-slate-100 p-1 rounded-lg dark:bg-slate-800">
-              <button
-                type="button"
-                onClick={()=>setType('event')}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${type === 'event' ? 'bg-white shadow-sm text-slate-900 dark:bg-slate-700 dark:text-slate-100' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
-              >
-                Event
-              </button>
-              <button
-                type="button"
-                onClick={()=>setType('task')}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${type === 'task' ? 'bg-white shadow-sm text-slate-900 dark:bg-slate-700 dark:text-slate-100' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
-              >
-                Task
-              </button>
-            </div>
-          )}
+
         </div>
+        
+        {errorMsg && (
+          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">
+            {errorMsg}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="ev-title" className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
@@ -235,6 +278,114 @@ export function CalendarEventModal({
               )}
             </>
           )}
+
+          {/* Recurring Options */}
+          {type === 'event' && (
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 dark:border-slate-800 dark:bg-slate-900/50 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <Repeat className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                  <span>Repeat</span>
+                </label>
+                <select
+                  value={recurrenceFreq}
+                  onChange={(e) => setRecurrenceFreq(e.target.value as any)}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-800 shadow-sm focus:border-violet-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                >
+                  <option value="none">Does not repeat</option>
+                  <option value="daily">Daily (Every day)</option>
+                  <option value="interval">Every X days</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="custom">Custom selection</option>
+                </select>
+              </div>
+
+              {/* Interval count for every X days or custom */}
+              {(recurrenceFreq === 'interval' || recurrenceFreq === 'custom') && (
+                <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                  <span>Every</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={recurrenceInterval}
+                    onChange={(e) => setRecurrenceInterval(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-center text-xs font-bold text-slate-900 shadow-sm focus:border-violet-500 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  />
+                  <span>days</span>
+                </div>
+              )}
+
+              {/* Day of Week checkboxes for weekly / custom */}
+              {(recurrenceFreq === 'weekly' || recurrenceFreq === 'custom') && (
+                <div className="space-y-1.5">
+                  <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    Repeat on:
+                  </span>
+                  <div className="flex gap-1.5">
+                    {[
+                      { label: 'S', day: 0, title: 'Sunday' },
+                      { label: 'M', day: 1, title: 'Monday' },
+                      { label: 'T', day: 2, title: 'Tuesday' },
+                      { label: 'W', day: 3, title: 'Wednesday' },
+                      { label: 'T', day: 4, title: 'Thursday' },
+                      { label: 'F', day: 5, title: 'Friday' },
+                      { label: 'S', day: 6, title: 'Saturday' },
+                    ].map(({ label, day, title }) => {
+                      const isSelected = recurrenceDays.includes(day)
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          title={title}
+                          onClick={() => {
+                            if (isSelected) {
+                              if (recurrenceDays.length > 1) {
+                                setRecurrenceDays(recurrenceDays.filter((d) => d !== day))
+                              }
+                            } else {
+                              setRecurrenceDays([...recurrenceDays, day].sort())
+                            }
+                          }}
+                          className={`h-7 w-7 rounded-lg text-xs font-bold transition-colors ${
+                            isSelected
+                              ? 'bg-violet-600 text-white shadow-sm shadow-violet-500/30'
+                              : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* End Date */}
+              {recurrenceFreq !== 'none' && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/60 pt-2 dark:border-slate-800">
+                  <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                    <input
+                      type="checkbox"
+                      checked={hasEndDate}
+                      onChange={(e) => setHasEndDate(e.target.checked)}
+                      className="rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                    />
+                    <span>Ends on</span>
+                  </label>
+                  {hasEndDate && (
+                    <input
+                      type="date"
+                      value={recurrenceEndDate}
+                      onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 [color-scheme:light] dark:[color-scheme:dark]"
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {type==='task' && (
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -259,9 +410,9 @@ export function CalendarEventModal({
                   onChange={(e)=>setTaskPriority(e.target.value as TaskPriority)}
                   className={inputCls}
                 >
-                  <option value="low">Low Priority</option>
-                  <option value="medium">Medium Priority</option>
-                  <option value="high">High Priority</option>
+                  <option value="low" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">Low Priority</option>
+                  <option value="medium" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">Medium Priority</option>
+                  <option value="high" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">High Priority</option>
                 </select>
               </div>
             </div>

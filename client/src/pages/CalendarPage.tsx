@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from'@tanstack/react-query'
 import { useMemo, useState } from'react'
-import axios from'axios'
+import axios from 'axios'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { CalendarEventModal } from'../components/calendar/CalendarEventModal'
 import { DayAgenda } from'../components/calendar/DayAgenda'
 import { MonthGrid } from'../components/calendar/MonthGrid'
@@ -151,7 +152,7 @@ export function CalendarPage() {
       : null
   const busy=createMut.isPending||updateMut.isPending||deleteMut.isPending||createTaskMut.isPending
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-[96%] 2xl:max-w-[1536px] flex-col justify-center py-8">
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -182,27 +183,27 @@ export function CalendarPage() {
             <button
               type="button"
               onClick={navPrev}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors shadow-sm"
               aria-label="Previous"
             >
-              ←
+              <ChevronLeft className="h-4 w-4" />
             </button>
             <button
               type="button"
               onClick={navToday}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors shadow-sm"
             >
               Today
             </button>
             <button
               type="button"
               onClick={navNext}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 transition-colors shadow-sm"
               aria-label="Next"
             >
-              →
+              <ChevronRight className="h-4 w-4" />
             </button>
-            <h2 className="ml-3 text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100">{title}</h2>
+            <h2 className="ml-2 text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100">{title}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 transition-colors">
@@ -217,9 +218,10 @@ export function CalendarPage() {
             <button
               type="button"
               onClick={()=>openCreateForDay(newEventDefaultDay())}
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-violet-700 transition-colors active:scale-95"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-violet-500/20 hover:bg-violet-700 transition-colors active:scale-95"
             >
-              + Create
+              <Plus className="h-4 w-4" />
+              <span>Create</span>
             </button>
           </div>
         </div>
@@ -279,7 +281,7 @@ export function CalendarPage() {
             await createMut.mutateAsync(body)
           }}
           onCreateTask={async (body)=>{
-            await createTaskMut.mutateAsync({ ...body, listId:'' })
+            await createTaskMut.mutateAsync(body)
           }}
           onUpdateEvent={async (id, body)=>{
             await updateMut.mutateAsync({ id, body })

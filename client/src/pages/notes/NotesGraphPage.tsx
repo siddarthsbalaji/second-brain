@@ -54,7 +54,7 @@ export function NotesGraphPage() {
  const bgColor=dark ?'#0f172a' :'#f8fafc'
  const nodeFill=dark ?'#7c3aed' :'#6d28d9'
  const nodeStroke=dark ?'#a78bfa' :'#8b5cf6'
- const linkColor=dark ?'#334155' :'#cbd5e1'
+ const linkColor = dark ? '#64748b' : '#94a3b8'
  const labelBg=dark ?'rgba(15, 23, 42, 0.85)' :'rgba(255, 255, 255, 0.92)'
  const labelColor=dark ?'#e2e8f0' :'#1e293b'
  const nodeCanvasObject=useCallback(

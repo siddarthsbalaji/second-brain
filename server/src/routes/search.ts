@@ -1,96 +1,105 @@
-import { Router, type Request } from'express'
-import { prisma } from'../db'
-import { requireAuth, type AuthedRequest } from'../middleware/auth'
-import { asyncHandler } from'../utils/asyncHandler'
-const router=Router()
+import { Router, type Request } from 'express'
+import { db } from '../db'
+import { requireAuth, type AuthedRequest } from '../middleware/auth'
+import { asyncHandler } from '../utils/asyncHandler'
+
+const router = Router()
 router.use(requireAuth)
-function userIdFrom(req: Request):string {
+
+function userIdFrom(req: Request): string {
   return (req as unknown as AuthedRequest).userId
 }
+
+function getSnippet(text: string, query: string): string {
+  const lowerText = text.toLowerCase()
+  const lowerQuery = query.toLowerCase()
+  const idx = lowerText.indexOf(lowerQuery)
+  
+  if (idx === -1) {
+    return text.slice(0, 150) + (text.length > 150 ? '...' : '')
+  }
+
+  const start = Math.max(0, idx - 60)
+  const end = Math.min(text.length, idx + query.length + 60)
+  
+  let snippet = text.slice(start, end)
+  if (start > 0) snippet = '...' + snippet
+  if (end < text.length) snippet = snippet + '...'
+  
+  return snippet
+}
+
 router.get(
-'/',
-  asyncHandler(async (req, res)=>{
-    const userId=userIdFrom(req)
-    const q=typeof req.query.q==='string' ? req.query.q.trim().slice(0, 240) :''
-    const limitRaw=Number(req.query.limit)
-    const limit=Number.isFinite(limitRaw) ? Math.min(50, Math.max(1, Math.floor(limitRaw))) : 25
+  '/',
+  asyncHandler(async (req, res) => {
+    const userId = userIdFrom(req)
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 240) : ''
+    const limitRaw = Number(req.query.limit)
+    const limit = Number.isFinite(limitRaw) ? Math.min(50, Math.max(1, Math.floor(limitRaw))) : 25
+
     if (!q) {
       res.json({ results: [] })
       return
     }
+
+    const lowerQ = q.toLowerCase()
+
     try {
-      const result=await prisma.$queryRaw<
-        {
-          type:string
-          result_id:string
-          title:string
-          entry_date: Date | null
-          snippet:string
-          rank: number
-        }[]
-      >`
-  WITH q AS (SELECT websearch_to_tsquery('english', ${q}::text) AS tsq),
-  hits AS (
-  SELECT
-  'note'::text AS type,
-  n.id::text AS result_id,
-  n.title AS title,
-  NULL::date AS entry_date,
-  ts_headline(
-  'english',
-  coalesce(n.content, ''),
-  (SELECT tsq FROM q),
-  'MaxWords = 40, MinWords = 12, ShortWord = 2'
-  ) AS snippet,
-  ts_rank(
-  to_tsvector('english', coalesce(n.title, '') || ' ' || coalesce(n.content, '')),
-  (SELECT tsq FROM q)
-  ) AS rank
-  FROM notes n
-  WHERE n.user_id = ${userId}::uuid
-  AND to_tsvector('english', coalesce(n.title, '') || ' ' || coalesce(n.content, '')) @@ (SELECT tsq FROM q)
-  UNION ALL
-  SELECT
-  'journal'::text,
-  j.id::text,
-  coalesce(nullif(j.title, ''), to_char(j.entry_date, 'YYYY-MM-DD')),
-  j.entry_date,
-  ts_headline(
-  'english',
-  coalesce(j.body_text, ''),
-  (SELECT tsq FROM q),
-  'MaxWords = 40, MinWords = 12, ShortWord = 2'
-  ),
-  ts_rank(
-  to_tsvector('english', coalesce(j.title, '') || ' ' || coalesce(j.body_text, '')),
-  (SELECT tsq FROM q)
-  )
-  FROM journal_entries j
-  WHERE j.user_id = ${userId}::uuid
-  AND to_tsvector('english', coalesce(j.title, '') || ' ' || coalesce(j.body_text, '')) @@ (SELECT tsq FROM q)
-  )
-  SELECT type, result_id, title, entry_date, snippet, rank
-  FROM hits
-  ORDER BY rank DESC NULLS LAST, title ASC
-  LIMIT ${limit}::int
-  `
-      res.json({
-        results: result.map((row)=>({
-          type: row.type as'note' |'journal',
-          id: row.result_id,
-          title: row.title,
-          snippet: row.snippet,
-          rank: row.rank,
-          entryDate:
-            row.type==='journal' && row.entry_date
-              ? new Date(row.entry_date).toISOString().slice(0, 10)
-              : null,
-        })),
+      // In a real production app with massive data, we'd use Algolia or Elastic.
+      // For personal second brains, fetching user's notes into memory is fast and cheap.
+      const [notesSnap, journalsSnap] = await Promise.all([
+        db.collection('notes').where('user_id', '==', userId).get(),
+        db.collection('journal_entries').where('user_id', '==', userId).get()
+      ])
+
+      const hits: any[] = []
+
+      notesSnap.forEach(doc => {
+        const data = doc.data()
+        const title = data.title || ''
+        const content = data.content || ''
+        
+        if (title.toLowerCase().includes(lowerQ) || content.toLowerCase().includes(lowerQ)) {
+          hits.push({
+            type: 'note',
+            id: doc.id,
+            title,
+            snippet: getSnippet(content, q),
+            rank: title.toLowerCase().includes(lowerQ) ? 2 : 1,
+            entryDate: null
+          })
+        }
       })
+
+      journalsSnap.forEach(doc => {
+        const data = doc.data()
+        const title = data.title || data.entry_date
+        const content = data.body_text || ''
+        
+        if (title.toLowerCase().includes(lowerQ) || content.toLowerCase().includes(lowerQ)) {
+          hits.push({
+            type: 'journal',
+            id: doc.id,
+            title,
+            snippet: getSnippet(content, q),
+            rank: title.toLowerCase().includes(lowerQ) ? 2 : 1,
+            entryDate: data.entry_date
+          })
+        }
+      })
+
+      // Sort by rank desc, then title asc
+      hits.sort((a, b) => {
+        if (a.rank !== b.rank) return b.rank - a.rank
+        return a.title.localeCompare(b.title)
+      })
+
+      res.json({ results: hits.slice(0, limit) })
     } catch (err) {
       console.error(err)
-      res.status(400).json({ error:'Invalid search query' })
+      res.status(400).json({ error: 'Search failed' })
     }
   })
 )
+
 export default router

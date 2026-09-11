@@ -1,9 +1,20 @@
 import { Router, type Request } from 'express'
 import { noteRowToDetail, noteRowToListItem } from '../domain/noteRow'
-import { prisma } from '../db'
+import { db, generateId } from '../db'
 import { requireAuth, type AuthedRequest } from '../middleware/auth'
 import { asyncHandler } from '../utils/asyncHandler'
 import { NoteService } from '../domain/NoteService'
+import { z } from 'zod'
+import { validate } from '../middleware/validate'
+
+const NoteValidationSchema = z.object({
+  body: z.object({
+    title: z.string().max(255).optional(),
+    content: z.string().optional(),
+    folderId: z.string().nullable().optional(),
+    tags: z.array(z.string()).optional(),
+  })
+})
 
 const router = Router()
 router.use(requireAuth)
@@ -16,11 +27,9 @@ router.get(
   '/tags',
   asyncHandler(async (req, res) => {
     const userId = userIdFrom(req)
-    const tags = await prisma.tag.findMany({
-      where: { user_id: userId },
-      select: { id: true, name: true },
-      orderBy: { normalized_name: 'asc' },
-    })
+    const tagsSnap = await db.collection('tags').where('user_id', '==', userId).get()
+    const tags = tagsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    tags.sort((a: any, b: any) => (a.normalized_name || '').localeCompare(b.normalized_name || ''))
     res.json({ tags })
   })
 )
@@ -29,20 +38,14 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const userId = userIdFrom(req)
-    const notes = await prisma.note.findMany({
-      where: { user_id: userId },
-      select: {
-        id: true,
-        user_id: true,
-        title: true,
-        slug: true,
-        folder_id: true,
-        created_at: true,
-        updated_at: true,
-      },
-      orderBy: { updated_at: 'desc' },
-    })
-    res.json({ notes: notes.map(noteRowToListItem as any) })
+    const notesSnap = await db.collection('notes')
+      .where('user_id', '==', userId)
+      .get()
+      
+    const notes = notesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    notes.sort((a: any, b: any) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+    
+    res.json({ notes: notes.map(n => noteRowToListItem(n as any)) })
   })
 )
 
@@ -50,150 +53,130 @@ router.get(
   '/graph',
   asyncHandler(async (req, res) => {
     const userId = userIdFrom(req)
-    const [nodes, links] = await Promise.all([
-      prisma.note.findMany({
-        where: { user_id: userId },
-        select: { id: true, title: true },
-        take: 1000,
-        orderBy: { updated_at: 'desc' },
-      }),
-      prisma.noteLink.findMany({
-        where: { user_id: userId },
-        select: { from_note_id: true, to_note_id: true },
-        take: 5000,
-      }),
-    ])
-    res.json({
-      nodes,
-      links: links.map((l) => ({ source: l.from_note_id, target: l.to_note_id })),
+    const notesSnap = await db.collection('notes').where('user_id', '==', userId).get()
+    
+    const nodes: any[] = []
+    const links: any[] = []
+    
+    notesSnap.docs.forEach(doc => {
+      const data = doc.data()
+      nodes.push({ id: doc.id, title: data.title })
+      if (Array.isArray(data.links)) {
+        data.links.forEach((targetId: string) => {
+          links.push({ source: doc.id, target: targetId })
+        })
+      }
     })
-  })
-)
-
-router.get(
-  '/:id/backlinks',
-  asyncHandler(async (req, res) => {
-    const userId = userIdFrom(req)
-    const id = req.params.id as string
-    const links = await prisma.noteLink.findMany({
-      where: { to_note_id: id, user_id: userId },
-      include: { from_note: true },
-      orderBy: { from_note: { title: 'asc' } },
-    })
-    const notes = links.map((l) => l.from_note)
-    res.json({ notes: notes.map(noteRowToListItem as any) })
-  })
-)
-
-router.get(
-  '/:id',
-  asyncHandler(async (req, res) => {
-    const userId = userIdFrom(req)
-    const id = req.params.id as string
-    const note = await NoteService.fetchNoteDetail(userId, id)
-    if (!note) {
-      res.status(404).json({ error: 'Note not found' })
-      return
-    }
-    res.json({ note: noteRowToDetail(note as any) })
+    
+    res.json({ nodes, links })
   })
 )
 
 router.post(
   '/',
+  validate(NoteValidationSchema),
   asyncHandler(async (req, res) => {
     const userId = userIdFrom(req)
-    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : ''
-    if (!title) {
-      res.status(400).json({ error: 'Title is required' })
+    const title = typeof req.body?.title === 'string' ? req.body.title.trim() : 'Untitled Note'
+    const content = typeof req.body?.content === 'string' ? req.body.content : ''
+    let folderId = typeof req.body?.folderId === 'string' ? req.body.folderId : null
+    
+    if (folderId) {
+      const folderDoc = await db.collection('folders').doc(folderId).get()
+      if (!folderDoc.exists || folderDoc.data()?.user_id !== userId) {
+        folderId = null
+      }
+    }
+
+    const slug = await NoteService.nextUniqueSlug(userId, title, null)
+    
+    const noteRef = db.collection('notes').doc()
+    const now = new Date().toISOString()
+    const noteData = {
+      user_id: userId,
+      title,
+      slug,
+      content,
+      folder_id: folderId,
+      created_at: now,
+      updated_at: now,
+      tags: [],
+      links: []
+    }
+    
+    await noteRef.set(noteData)
+
+    const tags = Array.isArray(req.body?.tags) ? req.body.tags : []
+    await NoteService.syncNoteTags(userId, noteRef.id, tags)
+    await NoteService.syncNoteLinks(userId, noteRef.id, content)
+
+    const detail = await NoteService.fetchNoteDetail(userId, noteRef.id)
+    res.status(201).json({ note: noteRowToDetail(detail as any) })
+  })
+)
+
+router.get(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const userId = userIdFrom(req)
+    const id = req.params.id as string
+    const detail = await NoteService.fetchNoteDetail(userId, id)
+    if (!detail) {
+      res.status(404).json({ error: 'Note not found' })
       return
     }
-    const content = typeof req.body?.content === 'string' ? req.body.content : ''
-    const folderId = typeof req.body?.folderId === 'string' ? req.body.folderId : null
-    const tags = Array.isArray(req.body?.tags) ? req.body.tags.map(String) : []
-    const slug = await NoteService.nextUniqueSlug(userId, title, null)
-
-    const note = await prisma.note.create({
-      data: {
-        user_id: userId,
-        title,
-        slug,
-        content,
-        folder_id: folderId,
-      },
-    })
-    await NoteService.syncNoteLinks(userId, note.id, content)
-    if (tags.length > 0) {
-      await NoteService.syncNoteTags(userId, note.id, tags)
-    }
-    const detail = await NoteService.fetchNoteDetail(userId, note.id)
-    res.status(201).json({ note: noteRowToDetail(detail as any) })
+    res.json({ note: noteRowToDetail(detail as any) })
   })
 )
 
 router.patch(
   '/:id',
+  validate(NoteValidationSchema),
   asyncHandler(async (req, res) => {
     const userId = userIdFrom(req)
     const id = req.params.id as string
-    const data: any = {}
-    let newTags: string[] | undefined
-
-    if (req.body?.title !== undefined) {
-      if (typeof req.body.title !== 'string' || !req.body.title.trim()) {
-        res.status(400).json({ error: 'Title cannot be empty' })
-        return
-      }
-      data.title = req.body.title.trim()
-    }
-    if (req.body?.content !== undefined) {
-      if (typeof req.body.content !== 'string') {
-        res.status(400).json({ error: 'content must be a string' })
-        return
-      }
-      data.content = req.body.content
-    }
-    if (req.body?.folderId !== undefined) {
-      data.folder_id = req.body.folderId === null ? null : String(req.body.folderId)
-    }
-    if (req.body?.tags !== undefined) {
-      if (!Array.isArray(req.body.tags)) {
-        res.status(400).json({ error: 'tags must be an array' })
-        return
-      }
-      newTags = req.body.tags.map(String)
-    }
-
-    if (Object.keys(data).length === 0 && newTags === undefined) {
-      res.status(400).json({ error: 'No valid fields to update' })
-      return
-    }
-
-    const row = await prisma.note.findUnique({ where: { id } })
-    if (!row || row.user_id !== userId) {
+    
+    const noteRef = db.collection('notes').doc(id)
+    const noteDoc = await noteRef.get()
+    
+    if (!noteDoc.exists || noteDoc.data()?.user_id !== userId) {
       res.status(404).json({ error: 'Note not found' })
       return
     }
 
-    if (data.title !== undefined && data.title !== row.title) {
-      data.slug = await NoteService.nextUniqueSlug(userId, data.title, id)
+    const updates: any = { updated_at: new Date().toISOString() }
+    let titleChanged = false
+
+    if (req.body?.title !== undefined) {
+      updates.title = String(req.body.title).trim() || 'Untitled Note'
+      titleChanged = true
+    }
+    if (req.body?.content !== undefined) {
+      updates.content = String(req.body.content)
+    }
+    if (req.body?.folderId !== undefined) {
+      let fId = req.body.folderId === null ? null : String(req.body.folderId)
+      if (fId) {
+        const folderDoc = await db.collection('folders').doc(fId).get()
+        if (!folderDoc.exists || folderDoc.data()?.user_id !== userId) fId = null
+      }
+      updates.folder_id = fId
     }
 
-    let updated = row
-    if (Object.keys(data).length > 0) {
-      data.updated_at = new Date()
-      updated = await prisma.note.update({
-        where: { id },
-        data,
-      })
+    if (titleChanged) {
+      updates.slug = await NoteService.nextUniqueSlug(userId, updates.title, id)
     }
 
-    await NoteService.syncNoteLinks(userId, updated.id, updated.content)
-    if (newTags !== undefined) {
-      await NoteService.syncNoteTags(userId, updated.id, newTags)
+    await noteRef.update(updates)
+
+    if (req.body?.tags !== undefined && Array.isArray(req.body.tags)) {
+      await NoteService.syncNoteTags(userId, id, req.body.tags)
     }
 
-    const detail = await NoteService.fetchNoteDetail(userId, updated.id)
+    const finalContent = updates.content !== undefined ? updates.content : noteDoc.data()?.content || ''
+    await NoteService.syncNoteLinks(userId, id, finalContent)
+
+    const detail = await NoteService.fetchNoteDetail(userId, id)
     res.json({ note: noteRowToDetail(detail as any) })
   })
 )
@@ -203,16 +186,16 @@ router.delete(
   asyncHandler(async (req, res) => {
     const userId = userIdFrom(req)
     const id = req.params.id as string
-
-    const deletedNote = await prisma.note.deleteMany({
-      where: { user_id: userId, id },
-    })
-
-    if (deletedNote.count === 0) {
+    
+    const noteRef = db.collection('notes').doc(id)
+    const noteDoc = await noteRef.get()
+    
+    if (!noteDoc.exists || noteDoc.data()?.user_id !== userId) {
       res.status(404).json({ error: 'Note not found' })
       return
     }
 
+    await noteRef.delete()
     res.status(204).send()
   })
 )

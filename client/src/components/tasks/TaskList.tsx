@@ -69,6 +69,18 @@ const TaskItem=React.memo(({
               <span className="opacity-70"></span>{formatDue(task.dueAt)}
             </p>
           )}
+          {task.subtasks && task.subtasks.length > 0 && (
+            <div className="mt-3 flex flex-col gap-1.5 border-l-2 border-slate-100 pl-3 dark:border-slate-800">
+              {task.subtasks.map((st) => (
+                <div key={st.id} className="flex items-center gap-2">
+                  <div className={`h-1.5 w-1.5 rounded-full ${st.completed ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                  <span className={`text-xs ${st.completed ? 'text-slate-400 line-through dark:text-slate-500' : 'text-slate-600 dark:text-slate-300'}`}>
+                    {st.title}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 gap-2 opacity-0 transition-opacity group-hover:opacity-100 sm:flex-col">
           <button

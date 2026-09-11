@@ -1,130 +1,287 @@
-# Second Brain
+# Second Brain 🧠
 
-A comprehensive personal knowledge management and productivity application built with a modern web stack. Second Brain helps you organize your notes, track habits, manage tasks, and keep a daily journal—all in one place.
+A modern, full-stack personal knowledge management (PKM) and productivity suite. Second Brain brings together interconnected note-taking, an interactive 2D knowledge graph, task and checklist management, habit tracking, a daily journal, an inspiration feed (**Lumen**), and a modular **Plugin Ecosystem** (Kanban Board, Pomodoro Timer)—all secured with **Google Sign-In**.
 
-## Architecture Overview
+---
 
-The application follows a standard client-server architecture with a RESTful API backend communicating with a relational database.
+## 📑 Table of Contents
 
-### System Diagram
+- [Architecture Overview](#-architecture-overview)
+- [Key Features](#-key-features)
+  - [Google Authentication & Onboarding](#-google-authentication--onboarding)
+  - [Modular Plugin Ecosystem](#-modular-plugin-ecosystem)
+  - [Lumen (Daily Sparks & Trivia)](#-lumen-daily-sparks--trivia)
+  - [Notes & 2D Knowledge Graph](#-notes--2d-knowledge-graph)
+  - [Tasks, Subtasks & Checklists](#-tasks-subtasks--checklists)
+  - [Habits, Journal & Calendar](#-habits-journal--calendar)
+- [Tech Stack](#-tech-stack)
+- [Repository Structure](#-repository-structure)
+- [Getting Started](#-getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Firebase Configuration Guide](#firebase-configuration-guide)
+  - [Environment Variables](#environment-variables)
+  - [Running Locally](#running-locally)
+  - [Running with Docker Compose](#running-with-docker-compose)
+- [Deployment](#-deployment)
+- [License](#-license)
+
+---
+
+## 🏛️ Architecture Overview
+
+The application is structured as a decoupled monorepo containing a high-performance **React Single Page Application (SPA)** and a secure **Express REST API** connected to **Firebase Firestore**.
 
 ```mermaid
 graph TD
-    Client["Client (React SPA)"] -->|REST API over HTTP| API["Server (Express API)"]
-    API -->|Prisma ORM| DB[("Supabase PostgreSQL")]
+    subgraph Browser ["Client (React + Vite SPA on Vercel)"]
+        FBAuth["Firebase Auth (Google Sign-In)"]
+        UI["Modern UI (Tailwind + Framer Motion)"]
+        Plugins["Plugin System (Kanban, Pomodoro)"]
+        Query["React Query Cache"]
+    end
+
+    subgraph Backend ["Server (Express 5 + TypeScript)"]
+        RateLimit["Rate Limiting (express-rate-limit)"]
+        AuthMiddleware["Auth Middleware (adminAuth.verifyIdToken)"]
+        Validation["Zod Validation Middleware"]
+        StorageHandler["Storage Route (Firebase Cloud Storage)"]
+        APIRoutes["Resource APIs (Notes, Tasks, Habits, Journal)"]
+    end
+
+    subgraph Cloud ["Firebase Cloud Ecosystem"]
+        FBApi["Firebase Authentication Service"]
+        FBStorage[("Firebase Cloud Storage")]
+        DB[("Firestore (NoSQL Database)")]
+    end
+
+    FBAuth -->|Google Popup Sign-In| FBApi
+    FBApi -->|ID Token (JWT)| UI
+    UI -->|REST API over Axios (Bearer Token)| RateLimit
+    RateLimit --> AuthMiddleware
+    AuthMiddleware -->|Verify Token| FBApi
+    AuthMiddleware --> Validation
+    Validation --> APIRoutes
+    StorageHandler -->|Stream Attachments| FBStorage
+    APIRoutes --> DB
 ```
 
-- **Client:** A Single Page Application (SPA) built with React, Vite, and Tailwind CSS. It uses React Query for efficient data fetching, caching, and state synchronization. It communicates with the backend exclusively via RESTful endpoints.
-- **Server:** A Node.js backend using Express.js. It handles authentication, data validation (via Zod), and domain logic (such as syncing wiki-style note links). 
-- **Database:** A PostgreSQL database hosted on Supabase. It uses raw SQL `to_tsvector` GIN indexes for performant full-text searches across notes and journals. 
+- **Client:** React 19, Vite, TypeScript, Tailwind CSS, Framer Motion for micro-interactions, React Query for resilient caching, and React Router v7.
+- **Server:** Node.js with Express 5, TypeScript, Zod validation, Rate Limiting, and JWT session signing.
+- **Database:** Firebase Firestore (NoSQL database) configured via Firebase Admin SDK.
 
-## Folder Structure
+---
 
-The repository is organized into a monorepo containing two main packages: `client` and `server`.
+## ✨ Key Features
+
+### 🔐 Google Authentication & Onboarding
+- **Google Identity Services (GIS):** Seamless one-tap and button sign-in directly in the browser; no passwords to remember.
+- **Audience Verification:** Backend validates Google ID tokens against `GOOGLE_CLIENT_ID` via Firebase Admin SDK.
+- **Instant Account Provisioning:** New users automatically receive an account and a default `Inbox` task list on first sign-in.
+- **Personalized Username Modal:** First-time sign-ins trigger an onboarding modal to customize their display name.
+- **Dev Bypass Mode:** Built-in development bypass for fast offline testing in non-production environments.
+
+### 🧩 Modular Plugin Ecosystem
+Extensible plugin architecture managed via the **Plugin Manager** modal (`Blocks` icon in header). Plugins can hook into predefined UI slots:
+- **📋 Kanban Board:** 
+  - Visual task management view for your tasks.
+  - Organize tasks across customizable workflow columns (*Backlog*, *Todo*, *In Progress*, *Done*).
+  - Drag-and-drop workflow status updates, task drawer editor, priority badges, and subtask progress bars.
+- **⏱️ Pomodoro Timer:** 
+  - Floating productivity widget with customizable focus duration, short breaks, and long breaks.
+  - Audio chimes, automated session tracking, and direct pairing with current active tasks.
+- **Configurable Settings:** Each plugin stores persistent, user-specific settings.
+
+### 💡 Lumen (Sources For Inspiration)
+- **Daily Inspiration Feed (`/lumen`):** Curated library of thought-provoking paradoxes, philosophical ideas, and untranslatable words.
+- **Interactive Cards:** Flip/reveal trivia answers, shuffle through sparks, or copy with one click.
+- **One-Click Note Creation:** Directly capture any spark or quote into your Second Brain as an editable Markdown note with backlink tags.
+
+### 📝 Notes & 2D Knowledge Graph
+- **Bidirectional Wiki-Links:** Interlink notes seamlessly using `[[Note Title]]` syntax with automatic backlink tracking.
+- **Dual Markdown Editors:** Toggle between rich WYSIWYG editing (TipTap) and raw Markdown formatting (CodeMirror).
+- **Interactive Knowledge Graph:** Visualize connections across your second brain with a physics-driven 2D force-directed graph (`react-force-graph-2d`).
+
+### ✅ Tasks, Subtasks & Checklists
+- **Multi-List Management:** Organize tasks into multiple lists (default *Inbox*, *Work*, *Personal*, or custom projects).
+- **Subtask Checklists:** Break complex tasks down into itemized checklists with real-time completion percentages.
+- **Priorities & Due Dates:** Filter and sort by priority (`urgent`, `high`, `medium`, `low`) and due dates with calendar integration.
+
+### 🔥 Habits, Journal & Calendar
+- **Habit Tracker:** Log daily streaks, track completion histories, and maintain momentum with optimistic UI updates.
+- **Daily Journal:** Date-anchored daily reflection logs linked with notes and tasks for that day.
+- **Calendar:** Unified view of scheduled deadlines, events, and recurring habits.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technologies |
+| :--- | :--- |
+| **Frontend** | React 19, Vite, TypeScript, Tailwind CSS, Framer Motion, Lucide Icons |
+| **State & Data Fetching** | TanStack React Query v5, Axios, React Context API |
+| **Routing & Navigation** | React Router v7 |
+| **Editor & Graph** | TipTap Starter Kit, CodeMirror v6, `react-force-graph-2d`, `canvas-confetti` |
+| **Backend** | Express 5, Node.js (v20+), TypeScript, `express-rate-limit`, `ts-node`, `nodemon` |
+| **Auth & Security** | Google Identity Services (GIS), Firebase Admin, JWT (`jsonwebtoken`), CORS |
+| **Database** | Firebase Firestore (NoSQL) |
+| **Validation** | Zod |
+| **Testing** | Vitest, Supertest, Playwright (E2E) |
+| **Infrastructure** | Docker, Docker Compose, Nginx, Vercel |
+
+---
+
+## 📂 Repository Structure
 
 ```text
 second-brain/
-├── client/                     # Frontend React application
-│   ├── public/                 # Static public assets
-│   └── src/
-│       ├── assets/             # Images and design assets
-│       ├── auth/               # Authentication contexts and hooks
-│       ├── components/         # Reusable UI components
-│       ├── context/            # React context providers
-│       ├── data/               # Static data files (e.g., quotes)
-│       ├── hooks/              # Custom React hooks (e.g., useLocalStorage)
-│       ├── lib/                # API clients and utility functions
-│       ├── pages/              # Application views/routes
-│       └── types/              # TypeScript type definitions
-├── server/                     # Backend Express API
-│   ├── prisma/                 # Prisma schema and migrations
+├── client/                               # Frontend React SPA
+│   ├── public/                           # Static assets (favicons, icons)
 │   ├── src/
-│   │   ├── __tests__/          # Vitest unit and integration tests
-│   │   ├── domain/             # Core business logic (NoteService, TaskService)
-│   │   ├── lib/                # Backend utilities (slugification, wiki link parsing)
-│   │   ├── middleware/         # Express middlewares (auth, error handling)
-│   │   ├── routes/             # Express API route controllers
-│   │   ├── utils/              # Helper functions (async wrappers)
-│   │   └── index.ts            # Application entry point
-│   └── Dockerfile              # Docker configuration for production builds
-└── docker-compose.yml          # Local development orchestration
+│   │   ├── api/                          # Axios instance & interceptors
+│   │   ├── auth/                         # AuthProvider, useAuth & auth context
+│   │   ├── components/                   # Core UI components & AppShell
+│   │   │   ├── auth/                     # UsernamePromptModal & auth modals
+│   │   │   ├── plugins/                  # PluginManagerModal & UI slots
+│   │   │   └── tasks/                    # Task lists, forms, & modals
+│   │   ├── context/                      # ThemeContext, PluginContext
+│   │   ├── data/                         # Lumen quotes, facts, and trivia cards
+│   │   ├── lib/                          # API clients (notes, tasks)
+│   │   ├── pages/                        # Routes (Home, Notes, Tasks, Habits,
+│   │   │                                 #  Journal, Calendar, Lumen, Login)
+│   │   ├── plugins/                      # Built-in modular plugins
+│   │   │   ├── kanban/                   # Kanban board & card drawer
+│   │   │   └── pomodoro/                 # Floating Pomodoro timer widget
+│   │   └── types/                        # TypeScript interfaces & types
+│   ├── index.html                        # HTML entry point (loads Google GSI)
+│   ├── vite.config.ts                    # Vite configuration
+│   └── Dockerfile                        # Multi-stage Nginx build
+├── server/                               # Backend Express API
+│   ├── src/
+│   │   ├── domain/                       # Core domain entities & business logic
+│   │   ├── middleware/                   # JWT auth, validation, rate limiting, error handlers
+│   │   ├── routes/                       # Express routes (auth, notes, tasks, habits, etc.)
+│   │   ├── utils/                        # Async handlers & utility functions
+│   │   ├── db.ts                         # Firebase Firestore configuration
+│   │   └── index.ts                      # Server bootstrap & middleware setup
+│   └── Dockerfile                        # Server container configuration
+└── docker-compose.yml                    # Local multi-container setup
 ```
 
-## Features
+---
 
-- **Notes & Knowledge Graph:** Create interconnected notes using wiki-style links and visualize them through an interactive knowledge graph. Features full-text search optimized with PostgreSQL GIN indexing.
-- **Task Management:** Manage your to-do lists, prioritize tasks, and track completions.
-- **Habit Tracker:** Log daily habits, track streaks, and visualize your progress over time.
-- **Journal:** Write daily journal entries to capture your thoughts and reflections.
-- **Calendar:** Keep track of upcoming events and deadlines.
-- **Dashboard:** A unified view of your most important information, including priority tasks, recent notes, and upcoming calendar events.
-
-## Tech Stack
-
-### Client (Frontend)
-- **Framework:** React + Vite
-- **Language:** TypeScript
-- **Styling:** Tailwind CSS + Framer Motion (for animations)
-- **Data Fetching:** React Query (@tanstack/react-query)
-- **Routing:** React Router
-
-### Server (Backend)
-- **Framework:** Express
-- **Language:** TypeScript
-- **Database ORM:** Prisma
-- **Database Engine:** PostgreSQL (hosted on Supabase)
-- **Validation:** Zod
-
-## Deployment & Hosting
-
-- **Database:** Hosted in the cloud on **Supabase** (PostgreSQL). Supabase manages the connection pooling and provides a direct connection for migrations.
-- **Application Deployment:** The application is deployed seamlessly using **Vercel**, providing edge-network performance, CI/CD integration, and easy environment variable management.
-
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v18 or newer recommended)
-- A Supabase project (for PostgreSQL)
-- A Vercel account (if you intend to deploy your own instance)
+- **Node.js**: v18.0.0 or later (v20+ recommended)
+- **npm** or **pnpm**
+- **Google Cloud / Firebase Account**: For Google Sign-In OAuth credentials and Firestore database.
+
+---
+
+### Firebase Configuration Guide
+
+#### 1. Enable Google Authentication in Firebase
+1. In the [Firebase Console](https://console.firebase.google.com/), select your project.
+2. Go to **Build** → **Authentication** → **Sign-in method**.
+3. Click **Add new provider** → select **Google** → toggle **Enable** → enter your support email → click **Save**.
+
+#### 2. Enable Firebase Cloud Storage & Firestore
+1. Go to **Build** → **Storage** → click **Get Started**.
+2. Go to **Build** → **Firestore Database** → click **Create Database**.
+3. Select **Start in production mode** (or test mode) and choose your preferred Cloud region.
+
+---
 
 ### Environment Variables
 
-1. Copy `.env.example` to `.env` in the `server` directory.
-2. Update the `DATABASE_URL` and `DIRECT_URL` with your Supabase credentials. Ensure your pooler URL uses port `6543`.
-3. In the `client` directory, create a `.env` file and set `VITE_API_URL` to point to your backend. (When deploying to Vercel, you will set this in the Vercel dashboard).
+#### 1. Server Environment (`server/.env`)
+Create `server/.env` (based on `server/.env.example`):
+```env
+# Secret key for JWT signing (at least 32 characters, e.g. `openssl rand -base64 32`)
+JWT_SECRET=super_secret_second_brain_jwt_token_must_be_at_least_32_chars_long
 
-### Installation
+# Allowed frontend origins (comma-separated for CORS)
+FRONTEND_ORIGINS=http://localhost:5173
 
-1. Install dependencies for the server:
-   ```bash
-   cd server
-   npm install
-   ```
-2. Generate Prisma client and apply migrations to your Supabase database:
-   ```bash
-   npx prisma generate
-   npx prisma migrate deploy
-   ```
-3. Install dependencies for the client:
-   ```bash
-   cd ../client
-   npm install
-   ```
+# Server port
+PORT=5000
+NODE_ENV=development
+
+# Firebase Admin SDK (Project Settings -> Service Accounts -> Generate New Private Key)
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-...@your-project-id.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
+```
+
+#### 2. Client Environment (`client/.env`)
+Create `client/.env` (based on `client/.env.example`):
+```env
+# Backend API URL
+VITE_API_URL=http://localhost:5000
+
+# Firebase Web App Config (Project Settings -> General -> Your Apps)
+VITE_FIREBASE_API_KEY=AIzaSy...
+VITE_FIREBASE_AUTH_DOMAIN=your-project-id.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=1234567890
+VITE_FIREBASE_APP_ID=1:1234567890:web:...
+```
+
+---
 
 ### Running Locally
 
-To run the application locally, you will need to start both the server and the client.
+Run both the server and client concurrently:
 
-**Start the Server:**
+#### Terminal 1 — Backend:
 ```bash
 cd server
+npm install
 npm run dev
+# Server starts at http://localhost:5000
 ```
 
-**Start the Client:**
+#### Terminal 2 — Frontend:
 ```bash
 cd client
+npm install
 npm run dev
+# Client starts at http://localhost:5173
 ```
 
-Your application should now be accessible at `http://localhost:5173`.
+Open your browser at **`http://localhost:5173`** to access Second Brain.
+
+---
+
+### Running with Docker Compose
+
+You can also orchestrate the entire stack (Express backend, and React/Nginx frontend) with Docker:
+
+```bash
+docker compose up --build
+```
+- **Web App:** `http://localhost:80`
+- **Backend API:** `http://localhost:5000`
+
+---
+
+## 🚢 Deployment
+
+### Frontend (Vercel)
+1. Import the repository in [Vercel](https://vercel.com).
+2. Set the **Root Directory** to `client`.
+3. Add Environment Variables:
+   - `VITE_API_URL`: `https://your-backend-api.com`
+4. Add your Vercel deployment domain to **Authorized JavaScript origins** in Google Cloud Console.
+
+### Backend
+- Deploy the Express API to [Render](https://render.com), [Railway](https://railway.app), or any VPS.
+- Set environment variables (`JWT_SECRET`, `FRONTEND_ORIGINS`, and Firebase credentials).
+
+---
+
+## 📄 License
+
+This project is licensed under the [ISC License](LICENSE).

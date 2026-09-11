@@ -1,63 +1,86 @@
-import { Router, type Request } from'express'
-import { eventRowToJson } from'../domain/eventRow'
-import { taskRowToJson } from'../domain/taskRow'
-import { prisma } from'../db'
-import { requireAuth, type AuthedRequest } from'../middleware/auth'
-import { asyncHandler } from'../utils/asyncHandler'
-const router=Router()
+import { Router, type Request } from 'express'
+import { expandRecurringEvents } from '../lib/recurrence'
+import { eventRowToJson } from '../domain/eventRow'
+import { taskRowToJson } from '../domain/taskRow'
+import { journalRowToJson } from '../domain/journalRow'
+import { db } from '../db'
+import { requireAuth, type AuthedRequest } from '../middleware/auth'
+import { asyncHandler } from '../utils/asyncHandler'
+
+const router = Router()
 router.use(requireAuth)
-function userIdFrom(req: Request):string {
+
+function userIdFrom(req: Request): string {
   return (req as unknown as AuthedRequest).userId
 }
+
+function parseDate(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const d = new Date(v)
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+}
+
 router.get(
-'/range',
-  asyncHandler(async (req, res)=>{
-    const userId=userIdFrom(req)
-    const startQ=req.query.start
-    const endQ=req.query.end
-    if (typeof startQ!=='string' || typeof endQ!=='string') {
-      res.status(400).json({ error:'start and end (ISO datetimes) are required' })
+  '/range',
+  asyncHandler(async (req, res) => {
+    const userId = userIdFrom(req)
+    const startRange = parseDate(req.query.start)
+    const endRange = parseDate(req.query.end)
+    
+    if (!startRange || !endRange) {
+      res.status(400).json({ error: 'start and end dates are required' })
       return
     }
-    const rangeStart=new Date(startQ)
-    const rangeEnd=new Date(endQ)
-    if (Number.isNaN(rangeStart.getTime())||Number.isNaN(rangeEnd.getTime())) {
-      res.status(400).json({ error:'Invalid start or end' })
-      return
-    }
-    if (rangeStart>=rangeEnd) {
-      res.status(400).json({ error:'end must be after start' })
-      return
-    }
-    const includeCompleted=req.query.includeCompleted==='true' || req.query.includeCompleted==='1'
-    const [tasks, events]=await Promise.all([
-      prisma.task.findMany({
-        where: {
-          user_id: userId,
-          due_at: {
-            not: null,
-            gte: rangeStart,
-            lt: rangeEnd,
-          },
-          ...(includeCompleted ? {} : { status:'open' }),
-        },
-        orderBy: { due_at:'asc' },
-      }),
-      prisma.event.findMany({
-        where: {
-          user_id: userId,
-          starts_at: { lt: rangeEnd },
-          ends_at: { gt: rangeStart },
-        },
-        orderBy: { starts_at:'asc' },
-      }),
+
+    const [eventsSnap, tasksSnap, journalsSnap] = await Promise.all([
+      db.collection('events')
+        .where('user_id', '==', userId)
+        .get(),
+      db.collection('tasks')
+        .where('user_id', '==', userId)
+        .get(),
+      db.collection('journal_entries')
+        .where('user_id', '==', userId)
+        .get()
     ])
-    res.json({
-      start: rangeStart.toISOString(),
-      end: rangeEnd.toISOString(),
-      tasks: tasks.map(taskRowToJson as any),
-      events: events.map(eventRowToJson as any),
+
+    // Fetch and process events
+    const rawEvents = eventsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    
+    // First, separate one-off events that are outside the range vs recurring events
+    const validRawEvents = rawEvents.filter((e: any) => {
+      // If it's a recurring event, keep it for the expansion function to decide
+      if (e.recurrence_rule && e.recurrence_rule.frequency !== 'none') {
+        return true
+      }
+      // Otherwise, just check normal intersection
+      return e.ends_at >= startRange && e.starts_at <= endRange
     })
+
+    const startRangeDate = new Date(startRange)
+    const endRangeDate = new Date(endRange)
+
+    const expandedEvents = expandRecurringEvents(validRawEvents, startRangeDate, endRangeDate)
+    
+    // expandRecurringEvents returns ExpandedEventJson[] which is already in camelCase and serialized.
+    // However, eventRowToJson expects snake_case for single events, but expandRecurringEvents already formats them properly!
+    // So we can just use the output of expandRecurringEvents.
+    const events = expandedEvents
+
+    const tasks = tasksSnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter((t: any) => t.due_at >= startRange && t.due_at <= endRange)
+      .map(t => taskRowToJson(t.id, t))
+
+    const endDateStr = endRange.split('T')[0]
+    const startDateStr = startRange.split('T')[0]
+    const journals = journalsSnap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter((j: any) => j.entry_date >= startDateStr && j.entry_date <= endDateStr)
+      .map(j => journalRowToJson(j as any))
+
+    res.json({ events, tasks, journals })
   })
 )
+
 export default router

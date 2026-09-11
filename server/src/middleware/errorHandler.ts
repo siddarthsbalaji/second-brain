@@ -1,12 +1,25 @@
-import type { Request, Response, NextFunction } from'express'
-import { Prisma } from'@prisma/client'
+import type { Request, Response, NextFunction } from 'express'
+
+import { ZodError } from 'zod'
+
 export function errorHandler(err: any, req: Request, res: Response, next: NextFunction) {
-  if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    if (err.code==='P2002') {
-      res.status(409).json({ error:'A resource with this unique field already exists' })
-      return
-    }
+  if (err instanceof ZodError) {
+    const zodErr = err as any
+    res.status(400).json({
+      error: 'Validation Error',
+      details: zodErr.errors ? zodErr.errors.map((e: any) => ({
+        path: e.path ? e.path.join('.') : '',
+        message: e.message,
+      })) : zodErr.issues,
+    })
+    return
   }
-  console.error('Unhandled Error:', err)
-  res.status(500).json({ error:'An unexpected error occurred.', details: err?.message||String(err) })
+
+  if (err.name === 'UnauthorizedError') {
+    res.status(401).json({ error: 'Unauthorized', details: err.message })
+    return
+  }
+
+  console.error('Unhandled Server Error:', err)
+  res.status(500).json({ error: 'An unexpected error occurred.', details: err?.message || String(err) })
 }

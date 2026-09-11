@@ -161,6 +161,7 @@ export function NotesLayout() {
  onSuccess: (note)=>{
  queryClient.invalidateQueries({ queryKey: ['notes'] })
  queryClient.invalidateQueries({ queryKey: ['search'] })
+ queryClient.invalidateQueries({ queryKey: ['notes-graph'] })
  navigate(`/notes/${note.id}`, { replace: true })
  },
  onError: (error: unknown)=>{
@@ -187,6 +188,7 @@ export function NotesLayout() {
  onSuccess: ()=>{
  queryClient.invalidateQueries({ queryKey: ['notes'] })
  queryClient.invalidateQueries({ queryKey: ['folders'] })
+ queryClient.invalidateQueries({ queryKey: ['notes-graph'] })
  }
  })
  const openFolderModal=(parentId:string | null)=>{
@@ -260,14 +262,24 @@ export function NotesLayout() {
  >
  <div className ="flex flex-wrap items-center gap-2 pt-2 lg:flex-col lg:items-stretch shrink-0">
  <div className ="flex items-center gap-2">
- <button
- type ="button"
- onClick={()=>createNoteMut.mutate(null)}
- disabled={createNoteMut.isPending}
- className ="flex flex-1 items-center justify-center gap-1 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
- >
- <Plus size={16}/>Note
- </button>
+  <button
+  type ="button"
+  onClick={()=>createNoteMut.mutate(null)}
+  disabled={createNoteMut.isPending}
+  className ="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors shadow-sm"
+  >
+    {createNoteMut.isPending ? (
+      <>
+        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+        <span>Creating…</span>
+      </>
+    ) : (
+      <>
+        <Plus size={16}/>
+        <span>Note</span>
+      </>
+    )}
+  </button>
  <button
  type ="button"
  onClick={()=>openFolderModal(null)}

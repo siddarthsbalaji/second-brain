@@ -2,10 +2,19 @@ CREATE EXTENSION IF NOT EXISTS"pgcrypto";
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
+  username TEXT NOT NULL DEFAULT '',
+  firebase_uid TEXT UNIQUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (LOWER(email));
+
+CREATE TABLE IF NOT EXISTS task_lists (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_task_lists_user_name_unique ON task_lists (user_id, lower(name));
 CREATE TABLE IF NOT EXISTS tasks (
@@ -16,9 +25,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   description TEXT,
   due_at TIMESTAMPTZ,
   priority TEXT NOT NULL DEFAULT'low' CHECK (priority IN ('low','medium','high')),
-  status TEXT NOT NULL DEFAULT'open' CHECK (status IN ('open','completed')),
+  status TEXT NOT NULL DEFAULT'open' CHECK (status IN ('open','in_progress','completed')),
   completed_at TIMESTAMPTZ,
   sort_order INT NOT NULL DEFAULT 0,
+  subtasks JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -84,7 +84,7 @@ function JournalEntryEditor({
  <button
  type ="button"
  onClick={()=>flushTitle()}
- className ="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+ className ="rounded-lg border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
  >
  Save now
  </button>
@@ -94,7 +94,7 @@ function JournalEntryEditor({
  if (confirm('Remove this day’s journal entry from the database?')) deleteMut.mutate()
  }}
  disabled={deleteMut.isPending}
- className ="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+ className ="rounded-lg border border-red-200 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-900/20"
  >
  Delete day
  </button>
@@ -139,7 +139,7 @@ export function JournalPage() {
  return<Navigate to={`/journal/${localISODate()}`} replace/>
  }
  return (
- <div className ="mx-auto max-w-7xl px-4 py-8">
+ <div className ="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-[96%] 2xl:max-w-[1536px] flex-col justify-center py-8">
  <div className ="flex flex-col gap-8 lg:flex-row lg:items-start">
  <aside className ="w-full shrink-0 lg:w-56">
  <div className ="flex flex-col gap-1">

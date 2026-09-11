@@ -1,20 +1,26 @@
 
-import type { CalendarEvent } from'../../types/calendar'
-import type { Task } from'../../types/task'
-import { eventOverlapsDay, getMonthGridDates, isSameDay, startOfDay } from'../../lib/calendarTime'
+import { Repeat } from 'lucide-react'
+import type { CalendarEvent } from '../../types/calendar'
+import type { Task } from '../../types/task'
+import { eventOverlapsDay, getMonthGridDates, isSameDay, startOfDay } from '../../lib/calendarTime'
 const WEEKDAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
 function cellItems(day: Date, tasks: Task[], events: CalendarEvent[]) {
- const out: { type:'task' |'event'; id:string; label:string }[]=[]
- for (const task of tasks) {
- if (!task.dueAt) continue
- if (!isSameDay(new Date(task.dueAt), day)) continue
- out.push({ type:'task', id: task.id, label: task.title })
- }
- for (const event of events) {
- if (!eventOverlapsDay(event.startsAt, event.endsAt, day)) continue
- out.push({ type:'event', id: event.id, label: event.title })
- }
- return out.slice(0, 4)
+  const out: { type: 'task' | 'event'; id: string; label: string; isRecurring?: boolean }[] = []
+  for (const task of tasks) {
+    if (!task.dueAt) continue
+    if (!isSameDay(new Date(task.dueAt), day)) continue
+    out.push({ type: 'task', id: task.id, label: task.title })
+  }
+  for (const event of events) {
+    if (!eventOverlapsDay(event.startsAt, event.endsAt, day)) continue
+    out.push({
+      type: 'event',
+      id: event.id,
+      label: event.title,
+      isRecurring: Boolean(event.recurrenceRule || event.isRecurringInstance),
+    })
+  }
+  return out.slice(0, 4)
 }
 type Props={
   anchor: Date
@@ -77,22 +83,27 @@ export function MonthGrid({ anchor, tasks, events, onSelectDay, onEditEvent, onE
       · {item.label}
     </button>
   </li>
- ) : (
- <li key={`e-${item.id}`}>
- <button
- type ="button"
- onClick={(e)=>{
- e.stopPropagation()
- const ev=events.find((x)=>x.id===item.id)
- if (ev) onEditEvent(ev)
- }}
- className ="w-full truncate rounded px-0.5 text-left text-[10px] text-emerald-800 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40 sm:text-xs"
- title={item.label}
- >
- ◆ {item.label}
- </button>
- </li>
- )
+  ) : (
+    <li key={`e-${item.id}`}>
+      <button
+        type="button"
+        onClick={(e)=>{
+          e.stopPropagation()
+          const ev=events.find((x)=>x.id===item.id)
+          if (ev) onEditEvent(ev)
+        }}
+        className="flex w-full items-center gap-1 truncate rounded px-0.5 text-left text-[10px] text-emerald-800 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40 sm:text-xs"
+        title={item.label}
+      >
+        {item.isRecurring ? (
+          <Repeat size={10} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
+        ) : (
+          <span className="shrink-0">◆</span>
+        )}
+        <span className="truncate">{item.label}</span>
+      </button>
+    </li>
+  )
  )}
  </ul>
  </div>

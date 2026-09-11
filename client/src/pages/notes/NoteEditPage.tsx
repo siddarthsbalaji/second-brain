@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from'@tanstack/react-query'
-import { useState } from'react'
+import { useState, useEffect } from'react'
 import { Link, useNavigate, useParams, useOutletContext } from'react-router-dom'
 import axios from'axios'
 import { LivePreviewEditor } from'../../components/notes/LivePreviewEditor'
@@ -15,6 +15,8 @@ import { uploadAttachment, deleteAttachment, fetchAttachments } from'../../lib/a
 import { Paperclip, X, File as FileIcon } from'lucide-react'
 import type { NoteDetail, NoteListItem } from'../../types/note'
 import type { NotesOutletContext } from'./NotesLayout'
+
+const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
 function NoteEditorBody({
  note,
  notesIndex,
@@ -47,6 +49,7 @@ function NoteEditorBody({
  queryClient.invalidateQueries({ queryKey: ['notes', note.id] })
  queryClient.invalidateQueries({ queryKey: ['notes', note.id,'backlinks'] })
  queryClient.invalidateQueries({ queryKey: ['search'] })
+ queryClient.invalidateQueries({ queryKey: ['notes-graph'] })
  },
  onError: (e)=>{
  setSaveError(
@@ -59,9 +62,19 @@ function NoteEditorBody({
     onSuccess: ()=>{
       queryClient.invalidateQueries({ queryKey: ['notes'] })
       queryClient.invalidateQueries({ queryKey: ['search'] })
+      queryClient.invalidateQueries({ queryKey: ['notes-graph'] })
       navigate('/notes', { replace: true })
     },
   })
+
+  // Autosave
+  useEffect(() => {
+    if (!dirty) return
+    const timer = setTimeout(() => {
+      updateMut.mutate()
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [title, content, tags, dirty])
   const { data: allAttachments=[] }=useQuery({
     queryKey: ['attachments'],
     queryFn: fetchAttachments,
@@ -71,11 +84,14 @@ function NoteEditorBody({
     mutationFn: (file: File)=>uploadAttachment(file, note.id),
     onSuccess: (newAttachment)=>{
       queryClient.invalidateQueries({ queryKey: ['attachments'] })
+      const fileUrl = newAttachment.filepath.startsWith('http')
+        ? newAttachment.filepath
+        : `${apiBase}/uploads/${newAttachment.filepath}`
       if (newAttachment.mime_type.startsWith('image/')) {
-        const md =`\n![${newAttachment.filename}](http://localhost:5000/uploads/${newAttachment.filepath})\n`
+        const md =`\n![${newAttachment.filename}](${fileUrl})\n`
         setContent((prev)=>prev+md)
       } else {
-        const md =`\n[${newAttachment.filename}](http://localhost:5000/uploads/${newAttachment.filepath})\n`
+        const md =`\n[${newAttachment.filename}](${fileUrl})\n`
         setContent((prev)=>prev+md)
       }
     },
@@ -159,23 +175,26 @@ function NoteEditorBody({
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
       {noteAttachments.map((a)=>{
         const isImage=a.mime_type.startsWith('image/')
+        const fileUrl = a.filepath.startsWith('http') ? a.filepath : `${apiBase}/uploads/${a.filepath}`
         return (
-          <div key={a.id} className="group relative flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white p-2 shadow-sm transition-all hover:border-violet-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-violet-600">
+          <div
+            key={a.id}
+            className="group relative flex flex-col items-center rounded-xl border border-slate-200 bg-white p-2 shadow-sm transition-all hover:border-violet-300 dark:border-slate-800 dark:bg-slate-900"
+          >
             <button
-              onClick={()=>{
-                if (confirm('Delete this attachment?')) deleteAttachmentMut.mutate(a.id)
-              }}
+              type="button"
+              onClick={() => deleteAttachmentMut.mutate(a.id)}
               className="absolute -right-2 -top-2 z-10 rounded-full bg-red-100 p-1 text-red-600 opacity-0 shadow-sm transition-all hover:scale-110 hover:bg-red-200 group-hover:opacity-100 dark:bg-red-900 dark:text-red-300 dark:hover:bg-red-800"
               title="Delete attachment"
             >
               <X className="h-3 w-3" />
             </button>
             {isImage ? (
-              <a href={`http://localhost:5000/uploads/${a.filepath}`} target="_blank" rel="noreferrer" className="w-full">
-                <img src={`http://localhost:5000/uploads/${a.filepath}`} alt={a.filename} className="h-24 w-full rounded-lg object-cover" />
+              <a href={fileUrl} target="_blank" rel="noreferrer" className="w-full">
+                <img src={fileUrl} alt={a.filename} className="h-24 w-full rounded-lg object-cover" />
               </a>
             ) : (
-              <a href={`http://localhost:5000/uploads/${a.filepath}`} target="_blank" rel="noreferrer" className="flex h-24 w-full items-center justify-center rounded-lg bg-slate-50 dark:bg-slate-800">
+              <a href={fileUrl} target="_blank" rel="noreferrer" className="flex h-24 w-full items-center justify-center rounded-lg bg-slate-50 dark:bg-slate-800">
                 <FileIcon className="h-8 w-8 text-slate-400" />
               </a>
             )}

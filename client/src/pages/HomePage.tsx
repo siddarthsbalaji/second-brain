@@ -1,101 +1,78 @@
-import { useState, useCallback } from'react'
-import { Dashboard } from'../components/Dashboard'
-import { useAuth } from'../auth/useAuth'
-import lines from'../data/lines.json'
-import { motion, AnimatePresence } from'framer-motion'
-import { useLocalStorage } from '../hooks/useLocalStorage'
-
-const STORAGE_KEY ='lineIndex'
-
-function getInitialIndex(): number {
-  const seed=new Date().toDateString().split('').reduce((a, b)=>a+b.charCodeAt(0), 0)
-  return seed % lines.length
-}
+import { Dashboard } from '../components/Dashboard'
+import { useAuth } from '../auth/useAuth'
+import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
+import { Sparkles, ArrowRight } from 'lucide-react'
 
 export function HomePage() {
-  const { user }=useAuth()
-  const [quoteIndex, setQuoteIndex]=useLocalStorage<number>(STORAGE_KEY, getInitialIndex)
-  const [spinning, setSpinning]=useState(false)
-  const handleNext=useCallback(()=>{
-    setSpinning(true)
-    setTimeout(()=>setSpinning(false), 400)
-    setQuoteIndex(prev=> (prev+1) % lines.length)
-  }, [setQuoteIndex])
+  const { user } = useAuth()
+  const displayName = user?.username || user?.email?.split('@')[0] || 'Explorer'
+
   return (
-    <div className="relative flex min-h-[calc(100vh-4rem)] w-full flex-col items-center py-12 px-4">
+    <div className="relative flex min-h-[calc(100vh-4rem)] w-full flex-col items-center justify-center py-10 px-4">
+      {/* Subtle radial background dot grid */}
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_20%,transparent_100%)] dark:bg-[radial-gradient(#334155_1px,transparent_1px)]" />
-      <div className="w-full max-w-6xl space-y-10">
+
+      <div className="mx-auto w-full max-w-[96%] 2xl:max-w-[1536px] space-y-8">
+        {/* Welcome Header */}
         <motion.div
-          initial={{ opacity: 0, y:-20 }}
+          initial={{ opacity: 0, y: -16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease:'easeOut' }}
-          className="space-y-2 text-center"
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/80 pb-6 dark:border-slate-800"
         >
-          <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">Welcome back!</h1>
-          <p className="text-lg text-slate-600 dark:text-slate-400">
-            Signed in as <span className="font-semibold text-violet-600 dark:text-violet-400">{user?.email}</span>
-          </p>
-        </motion.div>
-      <Dashboard/>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4, duration: 0.5, ease:'easeOut' }}
-        className="mx-auto max-w-2xl rounded-3xl border border-slate-200 bg-white/60 p-6 shadow-sm backdrop-blur-md dark:border-slate-800/60 dark:bg-slate-900/40 relative overflow-hidden group hover:border-violet-200 dark:hover:border-violet-500/20 transition-colors"
-      >
-        <div className="absolute inset-0 bg-gradient-to-br from-violet-50/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity dark:from-violet-900/10"></div>
-        <div className="relative z-10">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <span className="text-violet-600 dark:text-violet-400 text-2xl">❝</span>Lines
-            </h2>
-            <button
-              onClick={handleNext}
-              title="Next line"
-              className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:text-violet-700 hover:bg-violet-100/50 dark:text-slate-300 dark:hover:text-violet-300 dark:hover:bg-violet-900/30 transition-all active:scale-95"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{
-                  transition:'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                  transform: spinning ?'rotate(360deg)' :'rotate(0deg)',
-                }}
-              >
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                <path d="M3 3v5h5" />
-              </svg>
-              Next
-            </button>
-          </div>
-          <div className="flex flex-col justify-center mt-4">
-            <AnimatePresence mode="wait">
-              <motion.blockquote
-                key={quoteIndex}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x:-20 }}
-                transition={{ duration: 0.3 }}
-                className="text-lg font-medium leading-relaxed italic text-slate-800 dark:text-slate-200 text-center"
-              >
-                "{lines[quoteIndex]}"
-              </motion.blockquote>
-            </AnimatePresence>
-          </div>
-          <div className="mt-4 flex justify-end">
-            <p className="text-xs font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-full select-none">
-              {quoteIndex+1}/{lines.length}
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+              Welcome back, <span className="text-violet-600 dark:text-violet-400">{displayName}</span>
+            </h1>
+            <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
+              Here is what's happening across your Second Brain today.
             </p>
           </div>
-        </div>
-      </motion.div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              to="/lumen"
+              className="inline-flex items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50/70 px-4 py-2 text-sm font-semibold text-violet-700 shadow-sm transition-all hover:bg-violet-100 hover:shadow dark:border-violet-500/30 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-900/50 active:scale-95"
+            >
+              <Sparkles className="h-4 w-4 text-violet-500 animate-pulse" />
+              <span>Explore Lumen</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </motion.div>
+
+        {/* Unified Dashboard Metrics */}
+        <Dashboard />
+
+        {/* Quick Access Action Bar */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.4, ease: 'easeOut' }}
+          className="rounded-3xl border border-slate-200/80 bg-white/60 p-6 shadow-sm backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/40 flex flex-col md:flex-row items-center justify-between gap-4"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                Lumen Knowledge & Inspiration Hub
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Discover curated philosophical wisdom, science facts, and trivia. Save insights directly to your notes.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/lumen"
+            className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white shadow transition-all hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white active:scale-95"
+          >
+            <span>Open Lumen</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </motion.div>
       </div>
     </div>
   )

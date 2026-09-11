@@ -1,7 +1,8 @@
 
-import type { CalendarEvent } from'../../types/calendar'
-import type { Task } from'../../types/task'
-import { getWeekDays, isSameDay, itemsForDay, startOfDay } from'../../lib/calendarTime'
+import { Repeat } from 'lucide-react'
+import type { CalendarEvent } from '../../types/calendar'
+import type { Task } from '../../types/task'
+import { getWeekDays, isSameDay, itemsForDay, startOfDay } from '../../lib/calendarTime'
 type Props={
   anchor: Date
   tasks: Task[]
@@ -69,7 +70,12 @@ export function WeekColumns({ anchor, tasks, events, onSelectDay, onEditEvent, o
  onClick={()=>onEditEvent(item.event)}
  className ="w-full rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1 text-left text-xs text-emerald-900 hover:bg-emerald-100 dark:border-emerald-800/30 dark:bg-emerald-900/20 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
  >
+ <div className="flex items-center justify-between">
  <span className ="font-medium">Event</span>
+ {(item.event.recurrenceRule || item.event.isRecurringInstance) && (
+ <Repeat size={11} className="text-emerald-600 dark:text-emerald-400" />
+ )}
+ </div>
  <span className ="mt-0.5 block truncate">{item.event.title}</span>
  {!item.event.allDay&&(
  <span className ="text-[10px] text-emerald-800 dark:text-emerald-300">

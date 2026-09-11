@@ -1,7 +1,8 @@
 
-import type { CalendarEvent } from'../../types/calendar'
-import type { Task } from'../../types/task'
-import { itemsForDay, startOfDay } from'../../lib/calendarTime'
+import { Repeat } from 'lucide-react'
+import type { CalendarEvent } from '../../types/calendar'
+import type { Task } from '../../types/task'
+import { itemsForDay, startOfDay } from '../../lib/calendarTime'
 type Props={
   day: Date
   tasks: Task[]
@@ -44,14 +45,21 @@ export function DayAgenda({ day, tasks, events, onEditEvent, onEditTask }: Props
     </button>
   </li>
  ) : (
- <li key={`e-${item.event.id}`}>
- <button
- type ="button"
- onClick={()=>onEditEvent(item.event)}
- className ="flex w-full flex-col rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-left hover:bg-emerald-100 dark:border-emerald-800/30 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/40"
- >
- <span className ="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Event</span>
- <span className ="font-medium text-slate-900 dark:text-slate-100">{item.event.title}</span>
+  <li key={`e-${item.event.id}`}>
+  <button
+  type ="button"
+  onClick={()=>onEditEvent(item.event)}
+  className ="flex w-full flex-col rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-left hover:bg-emerald-100 dark:border-emerald-800/30 dark:bg-emerald-900/20 dark:hover:bg-emerald-900/40"
+  >
+  <div className="flex items-center justify-between w-full">
+    <span className ="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Event</span>
+    {(item.event.recurrenceRule || item.event.isRecurringInstance) && (
+      <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+        <Repeat size={12} /> Recurring
+      </span>
+    )}
+  </div>
+  <span className ="font-medium text-slate-900 dark:text-slate-100 mt-1">{item.event.title}</span>
  {item.event.description&&(
  <span className ="mt-1 text-sm text-slate-600 dark:text-slate-400">{item.event.description}</span>
  )}

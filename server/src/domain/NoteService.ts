@@ -1,6 +1,7 @@
-import { prisma } from '../db'
+import { db } from '../db'
 import { slugify } from '../lib/slug'
 import { extractWikiTargets } from '../lib/wikiLinks'
+import { FieldValue } from 'firebase-admin/firestore'
 
 function normalizeTagName(name: string) {
   return name.trim()
@@ -11,40 +12,42 @@ export class NoteService {
     let slug = slugify(base)
     let i = 0
     for (;;) {
-      const note = await prisma.note.findFirst({
-        where: {
-          user_id: userId,
-          slug,
-          ...(excludeId ? { id: { not: excludeId } } : {}),
-        },
-        select: { id: true },
-      })
-      if (!note) return slug
+      let query = db.collection('notes')
+        .where('user_id', '==', userId)
+        .where('slug', '==', slug)
+
+      const snap = await query.get()
+      const conflict = snap.docs.find(doc => doc.id !== excludeId)
+      
+      if (!conflict) return slug
       i += 1
       slug = `${slugify(base)}-${i}`
     }
   }
 
   static async syncNoteLinks(userId: string, fromNoteId: string, content: string) {
-    await prisma.noteLink.deleteMany({ where: { from_note_id: fromNoteId } })
     const targets = extractWikiTargets(content).map((t) => t.trim()).filter(Boolean)
-    if (targets.length === 0) return
+    if (targets.length === 0) {
+      await db.collection('notes').doc(fromNoteId).update({ links: [] })
+      return
+    }
+
     const slugs = targets.map(slugify)
     const rawNames = targets.map((t) => t.toLowerCase())
-    const r: any[] = await prisma.$queryRaw`
-      SELECT id FROM notes
-      WHERE user_id = ${userId}::uuid
-      AND (slug = ANY(${slugs}::text[]) OR lower(trim(title)) = ANY(${rawNames}::text[]))
-    `
-    const toIds = Array.from(new Set(r.map((row) => row.id))).filter((id) => id !== fromNoteId)
-    if (toIds.length === 0) return
-    await prisma.noteLink.createMany({
-      data: toIds.map((to_note_id) => ({
-        from_note_id: fromNoteId,
-        to_note_id,
-        user_id: userId,
-      })),
-      skipDuplicates: true,
+    
+    // In Firestore, we have to fetch notes and filter them or do individual gets
+    const notesSnap = await db.collection('notes').where('user_id', '==', userId).get()
+    
+    const toIds = new Set<string>()
+    notesSnap.forEach(doc => {
+      const data = doc.data()
+      if (doc.id !== fromNoteId && (slugs.includes(data.slug) || rawNames.includes(String(data.title).trim().toLowerCase()))) {
+        toIds.add(doc.id)
+      }
+    })
+
+    await db.collection('notes').doc(fromNoteId).update({
+      links: Array.from(toIds)
     })
   }
 
@@ -53,37 +56,36 @@ export class NoteService {
     const uniqueTags = Array.from(new Set(cleaned.map((tag) => tag.toLowerCase()))).map(
       (lower) => cleaned.find((tag) => tag.toLowerCase() === lower) as string
     )
-    await prisma.noteTag.deleteMany({ where: { note_id: noteId } })
-    if (uniqueTags.length === 0) return
+    
+    // Create/update tags globally for user
+    const batch = db.batch()
     for (const name of uniqueTags) {
       const normalizedName = name.toLowerCase()
-      await prisma.tag.upsert({
-        where: { user_id_normalized_name: { user_id: userId, normalized_name: normalizedName } },
-        update: { name },
-        create: { user_id: userId, name, normalized_name: normalizedName },
-      })
+      // Use normalized name as document id to prevent duplicates
+      const tagRef = db.collection('tags').doc(`${userId}_${normalizedName}`)
+      batch.set(tagRef, {
+        user_id: userId,
+        name: name,
+        normalized_name: normalizedName,
+        updated_at: new Date().toISOString()
+      }, { merge: true })
     }
-    const normalizedNames = uniqueTags.map((t) => t.toLowerCase())
-    const dbTags = await prisma.tag.findMany({
-      where: { user_id: userId, normalized_name: { in: normalizedNames } },
+    await batch.commit()
+
+    // Update note with string array of tags
+    await db.collection('notes').doc(noteId).update({
+      tags: uniqueTags
     })
-    if (dbTags.length > 0) {
-      await prisma.noteTag.createMany({
-        data: dbTags.map((t) => ({ note_id: noteId, tag_id: t.id })),
-        skipDuplicates: true,
-      })
-    }
   }
 
   static async fetchNoteDetail(userId: string, id: string) {
-    const note = await prisma.note.findUnique({
-      where: { id },
-      include: { note_tags: { include: { tag: true } } },
-    })
-    if (!note || note.user_id !== userId) return null
+    const noteDoc = await db.collection('notes').doc(id).get()
+    if (!noteDoc.exists || noteDoc.data()?.user_id !== userId) return null
+    const data = noteDoc.data()!
     return {
-      ...note,
-      tags: note.note_tags.map((nt) => nt.tag.name).sort(),
+      id: noteDoc.id,
+      ...data,
+      tags: (data.tags || []).sort()
     }
   }
 }

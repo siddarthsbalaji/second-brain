@@ -20,7 +20,7 @@ export function groupTasksForDisplay(tasks: Task[]): TaskGroup[] {
  const todayStart=startOfDay(now)
  const tomorrowStart=addDays(todayStart, 1)
  const weekEndStart=addDays(todayStart, 7)
- const open=tasks.filter((t)=>t.status==='open')
+ const open=tasks.filter((t)=>t.status==='open' || t.status==='in_progress')
  const completed=tasks.filter((t)=>t.status==='completed')
  const buckets: Record<TaskGroupId, Task[]>={
  overdue: [],

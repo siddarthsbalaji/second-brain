@@ -67,7 +67,35 @@ export function HabitsPage() {
   })
   const toggleMut=useMutation({
     mutationFn: ({ id, date }: { id:string; date:string })=>toggleHabitLog(id, date),
-    onSuccess: ()=>{
+    onMutate: async ({ id, date }) => {
+      await queryClient.cancelQueries({ queryKey: ['habits'] })
+      const previousHabits = queryClient.getQueryData<Habit[]>(['habits'])
+      if (previousHabits) {
+        queryClient.setQueryData<Habit[]>(['habits'], (old) => {
+          if (!old) return old
+          return old.map(h => {
+            if (h.id === id) {
+              const logs = [...(h.logs || [])]
+              const existingIdx = logs.findIndex(l => l.date.startsWith(date))
+              if (existingIdx >= 0) {
+                logs[existingIdx] = { ...logs[existingIdx], completed: !logs[existingIdx].completed }
+              } else {
+                logs.push({ id: 'temp', habit_id: id, date: date + 'T00:00:00Z', completed: true })
+              }
+              return { ...h, logs }
+            }
+            return h
+          })
+        })
+      }
+      return { previousHabits }
+    },
+    onError: (_err, _newLog, context) => {
+      if (context?.previousHabits) {
+        queryClient.setQueryData(['habits'], context.previousHabits)
+      }
+    },
+    onSettled: ()=>{
       queryClient.invalidateQueries({ queryKey: ['habits'] })
     },
   })
@@ -121,7 +149,7 @@ export function HabitsPage() {
       </div>
       {createMut.isError && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-300">
-          <strong>Failed to add habit.</strong> If you recently deployed the database update, please make sure your server's Prisma client is regenerated and restarted.
+          <strong>Failed to add habit.</strong> Please try again later.
         </div>
       )}
       {isLoading ? (
@@ -188,7 +216,7 @@ export function HabitsPage() {
                           <td key={i} className="py-4 px-2 text-center">
                             <button
                               type="button"
-                              disabled={isFuture||toggleMut.isPending}
+                              disabled={isFuture}
                               onClick={()=>handleToggle(habit.id, day)}
                               className={`group/btn relative inline-flex h-8 w-8 items-center justify-center rounded-xl transition-all ${
                                 isFuture

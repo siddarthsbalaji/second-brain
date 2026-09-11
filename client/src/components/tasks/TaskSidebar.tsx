@@ -1,7 +1,8 @@
-import { useState } from'react'
-import type { TaskFilter, TaskList } from'../../types/task'
-import { useMutation, useQueryClient } from'@tanstack/react-query'
-import { createTaskList, deleteTaskList } from'../../lib/tasksApi'
+import { useState } from 'react'
+import type { TaskFilter, TaskList } from '../../types/task'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { createTaskList, deleteTaskList } from '../../lib/tasksApi'
+import { X } from 'lucide-react'
 export function TaskSidebar({
   filter,
   setFilter,
@@ -95,10 +96,10 @@ export function TaskSidebar({
                         deleteListMut.mutate(list.id)
                       }
                     }}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-violet-100 opacity-60 hover:bg-violet-700 hover:opacity-100 dark:text-violet-200"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-violet-100 opacity-75 hover:bg-violet-700 hover:opacity-100 dark:text-violet-200 transition-opacity"
                     title="Delete list"
                   >
-                    ✕
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 )}
               </li>

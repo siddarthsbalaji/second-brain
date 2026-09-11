@@ -5,11 +5,13 @@ import { AppHeader } from'./components/AppShell'
 import { useAuth } from'./auth/useAuth'
 import { Analytics } from'@vercel/analytics/react'
 import { lazy, Suspense } from'react'
+import { PluginProvider, PluginFloatingSlots } from'./context/PluginContext'
 const HomePage=lazy(()=>import('./pages/HomePage').then((m)=>({ default: m.HomePage })))
 const CalendarPage=lazy(()=>import('./pages/CalendarPage').then((m)=>({ default: m.CalendarPage })))
 const JournalPage=lazy(()=>import('./pages/JournalPage').then((m)=>({ default: m.JournalPage })))
 const JournalTodayRedirect=lazy(()=>import('./pages/JournalPage').then((m)=>({ default: m.JournalTodayRedirect })))
 const SearchPage=lazy(()=>import('./pages/SearchPage').then((m)=>({ default: m.SearchPage })))
+const LumenPage=lazy(()=>import('./pages/LumenPage').then((m)=>({ default: m.LumenPage })))
 const NoteEditPage=lazy(()=>import('./pages/notes/NoteEditPage').then((m)=>({ default: m.NoteEditPage })))
 const NoteNewPage=lazy(()=>import('./pages/notes/NoteNewPage').then((m)=>({ default: m.NoteNewPage })))
 const NotesIndexPage=lazy(()=>import('./pages/notes/NotesIndexPage').then((m)=>({ default: m.NotesIndexPage })))
@@ -46,13 +48,14 @@ function RootLayout() {
     const { user, logout }=useAuth()
     const location=useLocation()
     const isAuthPage=location.pathname==='/login' || location.pathname==='/register'
+    const rootSection = location.pathname.split('/')[1] || 'home'
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
             {!isAuthPage&&user&&(
                 <AppHeader user={user} onLogout={logout}/>
             )}
             <AnimatePresence mode="wait" initial={false}>
-                <Routes location={location} key={location.pathname}>
+                <Routes location={location} key={rootSection}>
                     <Route
                         path="/"
                         element={
@@ -138,19 +141,30 @@ function RootLayout() {
                             </ProtectedRoute>
                         }
                     />
+                    <Route
+                        path="/lumen"
+                        element={
+                            <ProtectedRoute>
+                                <PageTransition>
+                                    <LumenPage/>
+                                </PageTransition>
+                            </ProtectedRoute>
+                        }
+                    />
                     <Route path="/login" element={<PageTransition><LoginPage/></PageTransition>}/>
                     <Route path="/register" element={<PageTransition><RegisterPage/></PageTransition>}/>
                     <Route path="*" element={<Navigate to="/" replace/>}/>
                 </Routes>
             </AnimatePresence>
+            {!isAuthPage && user && <PluginFloatingSlots />}
         </div>
     )
 }
 export default function App() {
     return (
-        <>
+        <PluginProvider>
             <RootLayout/>
             <Analytics/>
-        </>
+        </PluginProvider>
     )
 }

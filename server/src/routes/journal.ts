@@ -1,143 +1,150 @@
-import { Router, type Request } from'express'
-import { journalRowToDetail, journalRowToSummary } from'../domain/journalRow'
-import { prisma } from'../db'
-import { requireAuth, type AuthedRequest } from'../middleware/auth'
-import { asyncHandler } from'../utils/asyncHandler'
-const router=Router()
+import { Router, type Request } from 'express'
+import { journalRowToJson } from '../domain/journalRow'
+import { db } from '../db'
+import { requireAuth, type AuthedRequest } from '../middleware/auth'
+import { asyncHandler } from '../utils/asyncHandler'
+import { z } from 'zod'
+
+const JournalValidationSchema = z.object({
+  title: z.string().max(255).optional(),
+  bodyHtml: z.string().optional(),
+  bodyText: z.string().optional(),
+})
+
+const router = Router()
 router.use(requireAuth)
-const DATE_RE =/^\d{4}-\d{2}-\d{2}$/
-const MONTH_RE =/^\d{4}-\d{2}$/
-function userIdFrom(req: Request):string {
+
+function userIdFrom(req: Request): string {
   return (req as unknown as AuthedRequest).userId
 }
-function parseMonthParam(v: unknown):string {
-  if (typeof v==='string' && MONTH_RE.test(v)) return v
-  const d=new Date()
-  const y=d.getFullYear()
-  const m=String(d.getMonth()+1).padStart(2,'0')
-  return`${y}-${m}`
-}
-function monthRangeStrings(ym:string): { start: Date; endExclusive: Date } {
-  const [y, m]=ym.split('-').map(Number)
-  const start=new Date(`${y}-${String(m).padStart(2, '0')}-01T00:00:00.000Z`)
-  const ny=m===12 ? y+1 : y
-  const nm=m===12 ? 1 : m+1
-  const endExclusive=new Date(`${ny}-${String(nm).padStart(2, '0')}-01T00:00:00.000Z`)
-  return { start, endExclusive }
-}
+
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+
 router.get(
-'/',
-  asyncHandler(async (req, res)=>{
-    const userId=userIdFrom(req)
-    const month=parseMonthParam(req.query.month)
-    const { start, endExclusive }=monthRangeStrings(month)
-    const entries=await prisma.journalEntry.findMany({
-      where: {
-        user_id: userId,
-        entry_date: {
-          gte: start,
-          lt: endExclusive,
-        },
-      },
-      orderBy: { entry_date:'desc' },
+  '/',
+  asyncHandler(async (req, res) => {
+    const userId = userIdFrom(req)
+    let limit = 20
+    const limitRaw = Number(req.query.limit)
+    if (Number.isFinite(limitRaw) && limitRaw > 0) {
+      limit = Math.min(100, Math.floor(limitRaw))
+    }
+    const month = req.query.month as string
+
+    let query = db.collection('journal_entries')
+      .where('user_id', '==', userId)
+      // fetch all for user to sort in memory since no composite index is defined
+
+    const snap = await query.get()
+    
+    let entries = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+
+    // sort in memory
+    entries.sort((a: any, b: any) => {
+      const dateA = a.entry_date || ''
+      const dateB = b.entry_date || ''
+      return dateB.localeCompare(dateA) // desc
     })
-    res.json({ month, entries: entries.map(journalRowToSummary as any) })
+
+    if (month && /^\d{4}-\d{2}$/.test(month)) {
+      entries = entries.filter((e: any) => e.entry_date && e.entry_date.startsWith(month))
+    } else {
+      entries = entries.slice(0, limit)
+    }
+
+    res.json({ month, entries: entries.map(e => journalRowToJson(e as any)) })
   })
 )
+
 router.get(
-'/:date',
-  asyncHandler(async (req, res)=>{
-    const userId=userIdFrom(req)
-    const date=req.params.date as string
-    if (!DATE_RE.test(date)) {
-      res.status(400).json({ error:'date must be YYYY-MM-DD' })
+  '/:date',
+  asyncHandler(async (req, res) => {
+    const userId = userIdFrom(req)
+    const date = req.params.date as string
+    if (!DATE_REGEX.test(date)) {
+      res.status(400).json({ error: 'Date must be YYYY-MM-DD' })
       return
     }
-    const entryDate=new Date(`${date}T00:00:00.000Z`)
-    const entry=await prisma.journalEntry.findUnique({
-      where: {
-        user_id_entry_date: {
-          user_id: userId,
-          entry_date: entryDate,
-        },
-      },
-    })
-    if (!entry) {
-      res.json({
-        entry: null,
-        entryDate: date,
+
+    const snap = await db.collection('journal_entries')
+      .where('user_id', '==', userId)
+      .where('entry_date', '==', date)
+      .limit(1)
+      .get()
+
+    if (snap.empty) {
+      res.json({ entry: null })
+      return
+    }
+
+    const doc = snap.docs[0]
+    res.json({ entry: journalRowToJson({ id: doc.id, ...doc.data() } as any) })
+  })
+)
+
+router.put(
+  '/:date',
+  asyncHandler(async (req, res) => {
+    try {
+      JournalValidationSchema.parse(req.body)
+    } catch (e) {
+      res.status(400).json({ error: 'Validation failed' })
+      return
+    }
+
+    const userId = userIdFrom(req)
+    const date = req.params.date as string
+    if (!DATE_REGEX.test(date)) {
+      res.status(400).json({ error: 'Date must be YYYY-MM-DD' })
+      return
+    }
+
+    const snap = await db.collection('journal_entries')
+      .where('user_id', '==', userId)
+      .where('entry_date', '==', date)
+      .limit(1)
+      .get()
+
+    const title = typeof req.body.title === 'string' ? req.body.title.trim() : ''
+    const bodyHtml = typeof req.body.bodyHtml === 'string' ? req.body.bodyHtml : ''
+    const bodyText = typeof req.body.bodyText === 'string' ? req.body.bodyText : ''
+    const now = new Date().toISOString()
+
+    let docId: string
+    let data: any
+
+    if (snap.empty) {
+      const docRef = db.collection('journal_entries').doc()
+      docId = docRef.id
+      data = {
+        user_id: userId,
+        entry_date: date,
+        title,
+        body_html: bodyHtml,
+        body_text: bodyText,
+        created_at: now,
+        updated_at: now
+      }
+      await docRef.set(data)
+    } else {
+      docId = snap.docs[0].id
+      data = {
+        ...snap.docs[0].data(),
+        title,
+        body_html: bodyHtml,
+        body_text: bodyText,
+        updated_at: now
+      }
+      await db.collection('journal_entries').doc(docId).update({
+        title,
+        body_html: bodyHtml,
+        body_text: bodyText,
+        updated_at: now
       })
-      return
     }
-    res.json({ entry: journalRowToDetail(entry as any), entryDate: date })
+
+    res.json({ entry: journalRowToJson({ id: docId, ...data }) })
   })
 )
-router.patch(
-'/:date',
-  asyncHandler(async (req, res)=>{
-    const userId=userIdFrom(req)
-    const date=req.params.date as string
-    if (!DATE_RE.test(date)) {
-      res.status(400).json({ error:'date must be YYYY-MM-DD' })
-      return
-    }
-    const title=typeof req.body?.title==='string' ? req.body.title.trim() :''
-    if (typeof req.body?.bodyHtml!=='string' || typeof req.body?.bodyText!=='string') {
-      res.status(400).json({ error:'bodyHtml and bodyText are required strings' })
-      return
-    }
-    const bodyHtml=req.body.bodyHtml
-    const bodyText=req.body.bodyText
-    if (bodyHtml.length>2_000_000||bodyText.length>2_000_000) {
-      res.status(400).json({ error:'Body too large' })
-      return
-    }
-    const entryDate=new Date(`${date}T00:00:00.000Z`)
-    const entry=await prisma.journalEntry.upsert({
-      where: {
-        user_id_entry_date: {
-          user_id: userId,
-          entry_date: entryDate,
-        },
-      },
-      update: {
-        title,
-        body_html: bodyHtml,
-        body_text: bodyText,
-        updated_at: new Date(),
-      },
-      create: {
-        user_id: userId,
-        entry_date: entryDate,
-        title,
-        body_html: bodyHtml,
-        body_text: bodyText,
-      },
-    })
-    res.json({ entry: journalRowToDetail(entry as any) })
-  })
-)
-router.delete(
-'/:date',
-  asyncHandler(async (req, res)=>{
-    const userId=userIdFrom(req)
-    const date=req.params.date as string
-    if (!DATE_RE.test(date)) {
-      res.status(400).json({ error:'date must be YYYY-MM-DD' })
-      return
-    }
-    const entryDate=new Date(`${date}T00:00:00.000Z`)
-    const deleted=await prisma.journalEntry.deleteMany({
-      where: {
-        user_id: userId,
-        entry_date: entryDate,
-      },
-    })
-    if (deleted.count===0) {
-      res.status(404).json({ error:'Entry not found' })
-      return
-    }
-    res.status(204).send()
-  })
-)
+
 export default router
