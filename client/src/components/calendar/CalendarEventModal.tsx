@@ -58,7 +58,7 @@ export function CalendarEventModal({
   onDeleteEvent,
   busy,
 }: Props) {
-  const type = 'event'
+  const [type] = useState<'event' | 'task'>('event')
   const [title, setTitle]=useState(()=>(mode==='edit' && event ? event.title :''))
   const [description, setDescription]=useState(()=>
     mode==='edit' && event ? (event.description ??'') :''
