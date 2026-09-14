@@ -52,7 +52,10 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error.response?.data?.error || error.message || 'An unknown error occurred'
-    return Promise.reject(new Error(message))
+    const message = error?.response?.data?.error || error?.message || 'An unknown error occurred'
+    if (error && typeof error === 'object') {
+      error.message = message
+    }
+    return Promise.reject(error)
   }
 )

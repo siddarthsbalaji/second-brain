@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from'@tanstack/react-query'
 import { useState } from'react'
 import { useNavigate, useOutletContext } from'react-router-dom'
-import axios from'axios'
 import { WikiContent } from'../../components/notes/WikiContent'
 import { TagEditor } from'../../components/notes/TagEditor'
 import { createNote, fetchTags } from'../../lib/notesApi'
@@ -25,9 +24,13 @@ export function NoteNewPage() {
  queryClient.invalidateQueries({ queryKey: ['search'] })
  navigate(`/notes/${note.id}`, { replace: true })
  },
- onError: (e)=>{
- setError(axios.isAxiosError(e) ? (e.response?.data as { error?:string })?.error ??'Failed' :'Failed')
- },
+  onError: (e) => {
+    const msg =
+      (e as any)?.response?.data?.error ||
+      (e as any)?.message ||
+      'Failed to create note'
+    setError(msg)
+  },
  })
  function handleSave(e: React.FormEvent) {
  e.preventDefault()

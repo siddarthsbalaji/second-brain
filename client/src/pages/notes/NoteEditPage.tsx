@@ -51,11 +51,13 @@ function NoteEditorBody({
  queryClient.invalidateQueries({ queryKey: ['search'] })
  queryClient.invalidateQueries({ queryKey: ['notes-graph'] })
  },
- onError: (e)=>{
- setSaveError(
- axios.isAxiosError(e) ? (e.response?.data as { error?:string })?.error ??'Save failed' :'Save failed'
- )
- },
+  onError: (e) => {
+    setSaveError(
+      (e as any)?.response?.data?.error ||
+      (e as any)?.message ||
+      'Save failed'
+    )
+  },
  })
   const deleteMut=useMutation({
     mutationFn: ()=>deleteNote(note.id),
