@@ -36,6 +36,7 @@
    - [2. Backend Deployment on Render](#2-backend-deployment-on-render)
    - [3. Frontend Deployment on Vercel](#3-frontend-deployment-on-vercel)
    - [4. Verification & Common Gotchas](#4-deployment-verification--gotchas)
+   - [5. Keep-Alive Workflow (Zero Inactivity Sleep)](#5-keep-alive-workflow-zero-inactivity-sleep)
 5. [Environment Variables Reference](#-environment-variables-reference)
 6. [Local Development](#-local-development)
    - [Prerequisites](#prerequisites)
@@ -278,6 +279,29 @@ The React frontend is optimized for static serving and SPA client routing via [c
 >    If users encounter `auth/unauthorized-domain` during Google sign-in, ensure the Vercel domain is added in **Firebase Console → Authentication → Settings → Authorized domains**.
 > 4. **Private Key Newlines on Render:**
 >    When entering `FIREBASE_PRIVATE_KEY` on Render, ensure literal newlines (`\n`) are preserved or enclosed in double quotes. The backend automatically normalizes `\n` to actual line breaks upon initialization.
+
+---
+
+### 5. Keep-Alive Workflow (Zero Inactivity Sleep)
+
+To keep the application responsive and prevent free-tier services from sleeping when unvisited for extended periods, a GitHub Actions workflow ([.github/workflows/keep-alive.yml](file:///.github/workflows/keep-alive.yml)) runs every 14 minutes (`*/14 * * * *`).
+
+#### Architecture & Multi-Tier Keep-Alive
+- **Render Backend (`/health`):** Render free-tier instances spin down after 15 minutes of idle time. The 14-minute cron pings `/health`, keeping the container permanently warm and eliminating 50-second cold starts.
+- **Firebase Firestore:** The server `/health` endpoint performs a zero-footprint read query (`limit(1)`) via the Firebase Admin SDK. This keeps the Firestore database and GCP project active without writing or accumulating dummy documents.
+- **Vercel Frontend:** Pings the production frontend URL, warming edge CDN caches and verifying UI availability.
+
+#### Configured GitHub Secrets
+In your GitHub repository (**Settings → Secrets and variables → Actions**):
+
+| Secret | Description | Example / Fallback |
+| :--- | :--- | :--- |
+| `RENDER_BACKEND_URL` | Base URL of your Render web service | `https://your-server.onrender.com` |
+| `VERCEL_FRONTEND_URL` | Frontend URL | Defaults to `https://second-brain-ten-ruddy.vercel.app` |
+| `FIREBASE_PROJECT_ID` | Firebase Project ID (optional fallback ping) | `secondbrain-c2930` |
+
+> [!TIP]
+> You can manually trigger a health check at any time from GitHub by navigating to **Actions → Keep Alive (Firebase, Render, Vercel) → Run workflow**. The workflow produces a rich status table in the workflow summary.
 
 ---
 
