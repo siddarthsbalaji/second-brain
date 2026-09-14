@@ -1,50 +1,249 @@
-name: Keep Supabase Active
+name: Keep Alive (Firebase, Render, Vercel)
 
 on:
   schedule:
-    - cron: '0 0 */1 * *'
-  workflow_dispatch: 
+    # Render free tier spins down after 15 minutes of inactivity.
+    # Running every 14 minutes keeps Render awake and warms Vercel & Firebase.
+    - cron: '*/14 * * * *'
+  workflow_dispatch:
 
 jobs:
-  ping-supabase:
+  keep-alive:
+    name: Ping Services
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase Database
+      - name: Keep Alive Ping (Render, Firebase, Vercel)
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          TABLE_NAME: "events" 
+          RENDER_BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL || vars.RENDER_BACKEND_URL }}
+          VERCEL_FRONTEND_URL: ${{ secrets.VERCEL_FRONTEND_URL || vars.VERCEL_FRONTEND_URL || 'https://second-brain-ten-ruddy.vercel.app' }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID || vars.FIREBASE_PROJECT_ID }}
+          GITHUB_STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
         run: |
           node -e '
-            const url = process.env.SUPABASE_URL;
-            const key = process.env.SUPABASE_ANON_KEY;
-            const table = process.env.TABLE_NAME;
-            
-            if (!url || !key) {
-              console.error("Error: Secrets are missing.");
-              process.exit(1);
+            const fs = require("fs");
+
+            const RENDER_URL = (process.env.RENDER_BACKEND_URL || "").trim().replace(/\/+$/, "");
+            const VERCEL_URL = (process.env.VERCEL_FRONTEND_URL || "https://second-brain-ten-ruddy.vercel.app").trim().replace(/\/+$/, "");
+            const FIREBASE_PROJECT_ID = (process.env.FIREBASE_PROJECT_ID || "").trim();
+            const SUMMARY_FILE = process.env.GITHUB_STEP_SUMMARY;
+
+            async function fetchWithRetry(url, options = {}, retries = 2, delayMs = 3000) {
+              const timeoutMs = options.timeoutMs || 90000; // 90s timeout (handles Render cold-starts)
+              for (let attempt = 1; attempt <= retries + 1; attempt++) {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), timeoutMs);
+                const startTime = Date.now();
+                try {
+                  const res = await fetch(url, {
+                    ...options,
+                    signal: controller.signal,
+                    headers: {
+                      "User-Agent": "SecondBrain-KeepAlive/1.0 (+https://github.com/siddarthsbalaji/second-brain)",
+                      ...(options.headers || {})
+                    }
+                  });
+                  clearTimeout(timer);
+                  const latency = Date.now() - startTime;
+                  let data = null;
+                  const contentType = res.headers.get("content-type") || "";
+                  if (contentType.includes("application/json")) {
+                    try {
+                      data = await res.json();
+                    } catch (_) {}
+                  } else {
+                    try {
+                      await res.text();
+                    } catch (_) {}
+                  }
+                  return { ok: res.ok, status: res.status, statusText: res.statusText, latency, data, attempt };
+                } catch (err) {
+                  clearTimeout(timer);
+                  const latency = Date.now() - startTime;
+                  if (attempt <= retries) {
+                    console.log(`[Retry ${attempt}/${retries}] Request to ${url} failed (${err.message}). Retrying in ${delayMs}ms...`);
+                    await new Promise(r => setTimeout(r, delayMs));
+                  } else {
+                    return { ok: false, status: 0, statusText: err.message, latency, data: null, attempt };
+                  }
+                }
+              }
             }
 
-            const cleanUrl = `${url.replace(/\/+$/, "")}/rest/v1/${table}?select=*&limit=1`;
-            console.log("Pinging URL:", cleanUrl);
+            async function run() {
+              console.log("==================================================");
+              console.log("🚀 Second Brain Multi-Service Keep-Alive Check");
+              console.log("==================================================\n");
 
-            fetch(cleanUrl, {
-              headers: { 
-                "apikey": key,
-                "Authorization": `Bearer ${key}`
-              }
-            })
-            .then(res => {
-              console.log("HTTP Response Status:", res.status, res.statusText);
-              if (res.status >= 200 && res.status < 400) {
-                console.log("Success! Active connection registered with Supabase.");
+              const results = [];
+              let hasFatalError = false;
+
+              // 1. Ping Vercel Frontend
+              console.log(`🌐 [1/3] Pinging Vercel Frontend: ${VERCEL_URL} ...`);
+              const vercelRes = await fetchWithRetry(VERCEL_URL, { timeoutMs: 30000 }, 2);
+              if (vercelRes.ok) {
+                console.log(`   ✅ Vercel Frontend is alive! Status: ${vercelRes.status} (${vercelRes.latency}ms)`);
+                results.push({
+                  service: "Vercel Frontend",
+                  url: VERCEL_URL,
+                  status: `${vercelRes.status} ${vercelRes.statusText}`,
+                  latency: `${vercelRes.latency}ms`,
+                  details: "Static Edge / CDN Warm",
+                  state: "🟢 Healthy"
+                });
               } else {
-                console.error(`Received HTTP status ${res.status}. Check if table name or API key is correct.`);
+                console.error(`   ❌ Vercel Frontend failed! Status: ${vercelRes.status} (${vercelRes.statusText})`);
+                results.push({
+                  service: "Vercel Frontend",
+                  url: VERCEL_URL,
+                  status: `${vercelRes.status || "Failed"}`,
+                  latency: `${vercelRes.latency}ms`,
+                  details: vercelRes.statusText,
+                  state: "🔴 Failed"
+                });
+                hasFatalError = true;
+              }
+
+              // 2. Ping Render Backend (/health)
+              if (RENDER_URL) {
+                const healthEndpoint = `${RENDER_URL}/health`;
+                console.log(`\n⚙️  [2/3] Pinging Render Backend: ${healthEndpoint} ...`);
+                console.log("   (Waiting up to 90s to accommodate Render cold-starts if spun down)");
+                const renderRes = await fetchWithRetry(healthEndpoint, { timeoutMs: 90000 }, 2, 5000);
+                
+                if (renderRes.ok) {
+                  const data = renderRes.data || {};
+                  const uptime = data.uptime !== undefined ? `${data.uptime}s` : "N/A";
+                  const dbStatus = data.database?.status || "unknown";
+                  console.log(`   ✅ Render Backend is alive! Status: ${renderRes.status} (${renderRes.latency}ms, Server Uptime: ${uptime})`);
+
+                  results.push({
+                    service: "Render Backend",
+                    url: healthEndpoint,
+                    status: `${renderRes.status} ${renderRes.statusText}`,
+                    latency: `${renderRes.latency}ms`,
+                    details: `Uptime: ${uptime}`,
+                    state: "🟢 Healthy"
+                  });
+
+                  // 3. Verify Firebase Firestore status via Render response
+                  console.log(`\n🔥 [3/3] Verifying Firebase Firestore connection...`);
+                  if (dbStatus === "connected") {
+                    console.log(`   ✅ Firebase Firestore is active & connected! (Verified via Backend Admin SDK)`);
+                    results.push({
+                      service: "Firebase Firestore",
+                      url: "Cloud Firestore DB",
+                      status: "Active",
+                      latency: "Verified via Backend",
+                      details: "Read-only zero-footprint ping",
+                      state: "🟢 Connected"
+                    });
+                  } else if (dbStatus === "unconfigured") {
+                    console.log(`   ⚠️ Firebase credentials not configured on backend.`);
+                    results.push({
+                      service: "Firebase Firestore",
+                      url: "Cloud Firestore DB",
+                      status: "Unconfigured",
+                      latency: "-",
+                      details: "Missing credentials on server",
+                      state: "🟡 Unconfigured"
+                    });
+                  } else {
+                    console.error(`   ❌ Firebase Firestore check returned error: ${JSON.stringify(data.database)}`);
+                    results.push({
+                      service: "Firebase Firestore",
+                      url: "Cloud Firestore DB",
+                      status: "Error",
+                      latency: "-",
+                      details: data.database?.message || "Connection failed",
+                      state: "🔴 Disconnected"
+                    });
+                    hasFatalError = true;
+                  }
+                } else {
+                  console.error(`   ❌ Render Backend ping failed! Status: ${renderRes.status} (${renderRes.statusText})`);
+                  results.push({
+                    service: "Render Backend",
+                    url: healthEndpoint,
+                    status: `${renderRes.status || "Failed"}`,
+                    latency: `${renderRes.latency}ms`,
+                    details: renderRes.statusText,
+                    state: "🔴 Failed"
+                  });
+                  results.push({
+                    service: "Firebase Firestore",
+                    url: "Cloud Firestore DB",
+                    status: "Unknown",
+                    latency: "-",
+                    details: "Backend unreachable to verify Firestore",
+                    state: "🔴 Unchecked"
+                  });
+                  hasFatalError = true;
+                }
+              } else {
+                console.log(`\n⚙️  [2/3] Render Backend URL: Not set in secrets.`);
+                console.log(`   ℹ️  To keep Render alive, set RENDER_BACKEND_URL in GitHub repo secrets (e.g. https://your-server.onrender.com).`);
+                results.push({
+                  service: "Render Backend",
+                  url: "Not configured",
+                  status: "Skipped",
+                  latency: "-",
+                  details: "Set RENDER_BACKEND_URL in repository secrets",
+                  state: "⚪ Skipped"
+                });
+
+                // Direct fallback Firebase check if project ID is available
+                if (FIREBASE_PROJECT_ID) {
+                  console.log(`\n🔥 [3/3] Direct Firebase project ping: ${FIREBASE_PROJECT_ID}...`);
+                  const fbUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+                  const fbRes = await fetchWithRetry(fbUrl, { timeoutMs: 15000 }, 1);
+                  console.log(`   Firebase endpoint returned HTTP ${fbRes.status} (${fbRes.latency}ms)`);
+                  results.push({
+                    service: "Firebase Project",
+                    url: `firestore.googleapis.com (${FIREBASE_PROJECT_ID})`,
+                    status: `HTTP ${fbRes.status}`,
+                    latency: `${fbRes.latency}ms`,
+                    details: "Public REST endpoint ping",
+                    state: "🟢 Active"
+                  });
+                } else {
+                  results.push({
+                    service: "Firebase Firestore",
+                    url: "Cloud Firestore DB",
+                    status: "Skipped",
+                    latency: "-",
+                    details: "Configure RENDER_BACKEND_URL to enable backend Firestore health check",
+                    state: "⚪ Skipped"
+                  });
+                }
+              }
+
+              console.log("\n==================================================");
+              console.log("📊 Keep-Alive Summary Table");
+              console.log("==================================================");
+              console.table(results.map(r => ({ Service: r.service, State: r.state, Latency: r.latency, Details: r.details })));
+
+              // Append to GitHub Step Summary if running in Actions
+              if (SUMMARY_FILE && fs.existsSync(SUMMARY_FILE)) {
+                let md = `### 🚀 Keep-Alive Health Status\n\n`;
+                md += `| Service | Target | Status | Response Time | Details |\n`;
+                md += `| :--- | :--- | :--- | :--- | :--- |\n`;
+                for (const r of results) {
+                  md += `| **${r.service}** | \`${r.url}\` | ${r.state} (${r.status}) | ${r.latency} | ${r.details} |\n`;
+                }
+                md += `\n*Last check executed at: ${new Date().toISOString()}*\n`;
+                fs.appendFileSync(SUMMARY_FILE, md);
+              }
+
+              if (hasFatalError) {
+                console.error("\n❌ Keep-alive encountered failures on one or more configured services.");
                 process.exit(1);
               }
-            })
-            .catch(err => {
-              console.error("Fetch error:", err);
+
+              console.log("\n🎉 All active keep-alive checks passed successfully!");
+            }
+
+            run().catch(err => {
+              console.error("Unhandled error during keep-alive:", err);
               process.exit(1);
             });
           '

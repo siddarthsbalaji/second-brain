@@ -36,6 +36,7 @@
    - [2. Backend Deployment on Render](#2-backend-deployment-on-render)
    - [3. Frontend Deployment on Vercel](#3-frontend-deployment-on-vercel)
    - [4. Verification & Common Gotchas](#4-deployment-verification--gotchas)
+   - [5. Keep-Alive Workflow (Zero Inactivity Sleep)](#5-keep-alive-workflow-zero-inactivity-sleep)
 5. [Environment Variables Reference](#-environment-variables-reference)
 6. [Local Development](#-local-development)
    - [Prerequisites](#prerequisites)
