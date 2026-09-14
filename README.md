@@ -1,4 +1,4 @@
-# Second Brain 🧠
+# Second Brain 
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-second--brain--ten--ruddy.vercel.app-7928CA?style=for-the-badge&logo=vercel&logoColor=white)](https://second-brain-ten-ruddy.vercel.app)
 [![React](https://img.shields.io/badge/React%2019-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
@@ -13,14 +13,14 @@
 ---
 
 > [!NOTE]
-> ### 🏁 Project Status: Complete & Retired
+> ### Project Status: Complete & Retired
 > This project has reached its target milestone and is successfully deployed in production. All primary features, integrations (Google Auth, Firebase Firestore, Cloud Storage, Express API), and client-side plugins are fully operational. This repository serves as a reference architecture for full-stack PKM systems built with modern web technologies.
 > 
 > **Production URL:** [https://second-brain-ten-ruddy.vercel.app](https://second-brain-ten-ruddy.vercel.app)
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
 1. [Architecture Overview](#-architecture-overview)
 2. [Core Features](#-core-features)
@@ -46,7 +46,7 @@
 
 ---
 
-## 🏛️ Architecture Overview
+## Architecture Overview
 
 The repository is organized as a decoupled monorepo consisting of:
 - **Frontend SPA**: React 19 and Vite deployed on **Vercel** with global CDN caching and client-side SPA routing.
@@ -91,36 +91,36 @@ flowchart TB
 
 ---
 
-## ✨ Core Features
+## Core Features
 
-### 🔐 Google Authentication & Onboarding
+### Google Authentication & Onboarding
 - **Zero-Friction Sign-In:** Authenticate seamlessly using Google Identity Services (GIS); no passwords or email verification links required.
 - **Token Verification:** The backend securely validates client-issued ID tokens against Google’s cryptographic public keys using the Firebase Admin SDK.
 - **Automatic User Provisioning:** First-time users are instantly provisioned with a database profile and an initialized `Inbox` task list.
 - **Display Name Onboarding:** Interactive modal on first sign-in allowing users to personalize their username.
 - **Offline / Dev Mode:** Integrated offline test login for quick local testing without live Firebase credentials.
 
-### 📝 Interlinked Notes & 2D Knowledge Graph
+### Interlinked Notes & 2D Knowledge Graph
 - **Bidirectional Wiki-Links:** Connect related notes using standard `[[Note Title]]` syntax; backlinks are tracked and updated automatically.
 - **Interactive 2D Force Graph:** Render your second brain as an animated, interactive force-directed network graph powered by `react-force-graph-2d`.
 - **Dual Markdown Editors:** Seamlessly toggle between rich WYSIWYG editing (TipTap) and raw Markdown code (CodeMirror 6).
 - **Tag Management:** Auto-indexing of tags across notes with tag filtering and fast search.
 
-### ✅ Task Management & Subtask Checklists
+### Task Management & Subtask Checklists
 - **Multi-List Organization:** Organize tasks across discrete lists (`Inbox`, `Work`, `Personal`, or custom project categories).
 - **Nested Subtask Lists:** Add itemized checklists to any task with real-time completion tracking and dynamic progress bars.
 - **Priorities & Dates:** Classify items by urgency (`low`, `medium`, `high`) and attach due dates with reminders.
 
-### 🧩 Modular Plugin Ecosystem
+### Modular Plugin Ecosystem
 Extensible client-side plugin architecture managed directly from the **Plugin Manager** modal:
-- **📋 Kanban Board Plugin:**
+- **Kanban Board Plugin:**
   - Converts any task list into a 4-column visual kanban (*Backlog*, *Todo*, *In Progress*, *Done*).
   - Drag-and-drop workflow status updates, task drawer editor, and subtask progress indicators.
-- **⏱️ Pomodoro Timer Plugin:**
+- **Pomodoro Timer Plugin:**
   - Floating, minimizeable productivity widget with configurable focus sessions, short breaks, and long breaks.
   - Native browser notifications, celebratory chime audio, and direct task pairing.
 
-### 🔥 Habits, Daily Journal & Calendar
+### Habits, Daily Journal & Calendar
 - **Habit Tracker:** Log daily completion streaks, visualize consistency grids, and celebrate milestones with confetti animations.
 - **Daily Reflection Journal:** Anchor your thoughts to dates with automated morning and evening prompts.
 - **Unified Calendar:** Centralized calendar grid combining scheduled events, recurring rules, and task deadlines.
@@ -131,7 +131,7 @@ Extensible client-side plugin architecture managed directly from the **Plugin Ma
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Domain | Technology | Description |
 | :--- | :--- | :--- |
@@ -150,7 +150,7 @@ Extensible client-side plugin architecture managed directly from the **Plugin Ma
 
 ---
 
-## 🚢 Production Deployment Guide
+## Production Deployment Guide
 
 Deploying Second Brain into production requires configuring three integrated components: **Firebase**, **Render**, and **Vercel**.
 
@@ -281,7 +281,7 @@ The React frontend is optimized for static serving and SPA client routing via [c
 
 ---
 
-## 🔐 Environment Variables Reference
+## Environment Variables Reference
 
 ### Client Variables (`client/.env`)
 ```env
@@ -314,7 +314,7 @@ FIREBASE_STORAGE_BUCKET=secondbrain-c2930.firebasestorage.app
 
 ---
 
-## 💻 Local Development
+## Local Development
 
 ### Prerequisites
 - **Node.js**: `v20.x` or higher
@@ -363,7 +363,7 @@ docker compose up --build
 
 ---
 
-## 📂 Repository Structure
+## Repository Structure
 
 ```text
 second-brain/
@@ -431,7 +431,7 @@ second-brain/
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the [ISC License](LICENSE).
 
