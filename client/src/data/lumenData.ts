@@ -15,7 +15,7 @@ export const lumenWisdomLines: LumenItem[] = (linesData as string[]).map((text, 
   id: `line-${idx + 1}`,
   type: 'line',
   category: 'Philosophy',
-  content: text,
+  content: text.replace(/^["“](.*)["”]$/, '$1').trim(),
 }))
 
 export const lumenFunFacts: LumenItem[] = [

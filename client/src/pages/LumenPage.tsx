@@ -51,7 +51,7 @@ export function LumenPage() {
     mutationFn: async () => {
       let title = 'Lumen Insight'
       if (activeItem.type === 'line') {
-        title = `Wisdom: "${activeItem.content.slice(0, 32)}..."`
+        title = `Wisdom: ${activeItem.content.slice(0, 32)}...`
       } else if (activeItem.type === 'fact') {
         title = `Fact: ${activeItem.category}`
       } else if (activeItem.type === 'trivia') {
@@ -122,7 +122,7 @@ export function LumenPage() {
               <div className="my-8 min-h-[140px] flex flex-col justify-center">
                 {activeItem.type === 'line' ? (
                   <blockquote className="text-xl sm:text-2xl font-medium leading-relaxed italic text-slate-800 dark:text-slate-100 text-center">
-                    "{activeItem.content}"
+                    {activeItem.content}
                   </blockquote>
                 ) : activeItem.type === 'fact' ? (
                   <p className="text-lg sm:text-xl font-medium leading-relaxed text-slate-800 dark:text-slate-100">

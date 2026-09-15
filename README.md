@@ -52,7 +52,7 @@
 The repository is organized as a decoupled monorepo consisting of:
 - **Frontend SPA**: React 19 and Vite deployed on **Vercel** with global CDN caching and client-side SPA routing.
 - **Backend API**: Express 5 on Node 20 deployed on **Render** (containerized via Docker), providing authenticated REST endpoints, Zod validation, and rate limiting.
-- **Data & Auth Cloud**: **Firebase Authentication** for identity tokens, **Firestore** for document persistence, and **Firebase Cloud Storage** for file attachments.
+- **Data & Auth Cloud**: **Firebase Authentication** for identity tokens and **Firestore** for document persistence (with Firebase Cloud Storage backend routes preserved).
 
 ```mermaid
 flowchart TB
@@ -192,8 +192,8 @@ sequenceDiagram
 3. **Firestore Database:**
    - Go to **Build → Firestore Database → Create Database**.
    - Choose your preferred cloud region and start in **Production mode**.
-4. **Cloud Storage:**
-   - Go to **Build → Storage → Get Started** to enable attachment uploads.
+4. **Cloud Storage (Optional):**
+   - Go to **Build → Storage → Get Started** if configuring storage buckets (note: client file attachment option has been removed from the UI).
 
 #### B. Retrieve Client Configuration
 1. Go to **Project Settings** (gear icon) → **General**.
@@ -418,7 +418,7 @@ second-brain/
 │   │   │   ├── habits.ts                 # /api/habits (habits & completions)
 │   │   │   ├── calendar.ts               # /api/calendar (events & recurring rules)
 │   │   │   ├── journal.ts                # /api/journal (daily reflection entries)
-│   │   │   └── attachments.ts            # /api/attachments (Cloud storage uploads)
+│   │   │   └── attachments.ts            # /api/attachments (Backend storage routes; UI upload button removed)
 │   │   ├── db.ts                         # Firestore instance export
 │   │   ├── lib/firebase.ts               # Firebase Admin SDK initialization
 │   │   └── index.ts                      # Express application entry & CORS setup

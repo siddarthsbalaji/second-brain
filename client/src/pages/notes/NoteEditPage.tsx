@@ -11,8 +11,8 @@ import {
   fetchNoteBacklinks,
   updateNote,
 } from'../../lib/notesApi'
-import { uploadAttachment, deleteAttachment, fetchAttachments } from'../../lib/attachmentsApi'
-import { Paperclip, X, File as FileIcon } from'lucide-react'
+import { deleteAttachment, fetchAttachments } from'../../lib/attachmentsApi'
+import { X, File as FileIcon } from'lucide-react'
 import type { NoteDetail, NoteListItem } from'../../types/note'
 import type { NotesOutletContext } from'./NotesLayout'
 
@@ -82,55 +82,16 @@ function NoteEditorBody({
     queryFn: fetchAttachments,
   })
   const noteAttachments=allAttachments.filter((a)=>a.note_id===note.id)
-  const uploadMut=useMutation({
-    mutationFn: (file: File)=>uploadAttachment(file, note.id),
-    onSuccess: (newAttachment)=>{
-      queryClient.invalidateQueries({ queryKey: ['attachments'] })
-      const fileUrl = newAttachment.filepath.startsWith('http')
-        ? newAttachment.filepath
-        : `${apiBase}/uploads/${newAttachment.filepath}`
-      if (newAttachment.mime_type.startsWith('image/')) {
-        const md =`\n![${newAttachment.filename}](${fileUrl})\n`
-        setContent((prev)=>prev+md)
-      } else {
-        const md =`\n[${newAttachment.filename}](${fileUrl})\n`
-        setContent((prev)=>prev+md)
-      }
-    },
-  })
   const deleteAttachmentMut=useMutation({
     mutationFn: deleteAttachment,
     onSuccess: ()=>{
       queryClient.invalidateQueries({ queryKey: ['attachments'] })
     },
   })
-  const handleFileChange=(e: React.ChangeEvent<HTMLInputElement>)=>{
-    if (e.target.files&&e.target.files[0]) {
-      uploadMut.mutate(e.target.files[0])
-      e.target.value =''
-    }
-  }
  return (
  <div className ="space-y-6">
  <div className ="flex flex-wrap items-start justify-end gap-3">
  <div className ="flex flex-wrap gap-2">
-  <div className="relative inline-block">
-    <input
-      type="file"
-      onChange={handleFileChange}
-      disabled={uploadMut.isPending}
-      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-      title="Attach File"
-    />
-    <button
-      type="button"
-      disabled={uploadMut.isPending}
-      className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-    >
-      <Paperclip className="h-4 w-4" />
-      {uploadMut.isPending ?'Uploading…' :'Attach File'}
-    </button>
-  </div>
   <button
   type ="button"
   disabled={!dirty||updateMut.isPending}
